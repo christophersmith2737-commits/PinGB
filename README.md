@@ -2,8 +2,6 @@
 
 上传任意图片，一键生成拼豆底稿。支持智能色彩映射、多店家色号系统、沉浸式拼豆引导，让拼豆制作更简单。
 
-**体验地址**: https://pindou.348349.xyz/
-
 ## ✨ 核心功能
 
 ### 图片转像素画
@@ -83,7 +81,6 @@ npx wrangler pages deploy out --project-name pinGB
 |--------|------|
 | `VOLC_ACCESS_KEY_ID` | 火山引擎 Access Key |
 | `VOLC_SECRET_ACCESS_KEY` | 火山引擎 Secret Key |
-| `NEXT_PUBLIC_OFFICIAL_DOMAIN` | 自定义域名（可选） |
 | `REMOVEBG_API_KEY` | remove.bg API Key（可选） |
 
 参考 `.env.example` 进行配置。
