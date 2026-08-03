@@ -105,6 +105,13 @@ export default function FocusModePage() {
   }, [taskQueue, currentTaskIndex]);
   const totalCount = taskQueue?.totalBeadCount ?? 0;
   const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  // 画布是否偏离初始位置
+  const isCanvasMisaligned = canvasOffset.x !== 0 || canvasOffset.y !== 0;
+  const handleResetView = useCallback(() => {
+    setCanvasOffset({ x: 0, y: 0 });
+  }, []);
+
   const formatTime = (s: number): string => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
@@ -136,23 +143,53 @@ export default function FocusModePage() {
   // ============================================================
   const showOverlay = phase === 'idle' || phase === 'countdown';
 
-  return (
-    <div className="min-h-screen bg-gray-950 flex flex-col select-none">
-      {/* ===== 顶栏：仅返回 + 进度数字 ===== */}
-      <header className="shrink-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
-        <button onClick={() => { window.history.back(); }}
-          className="text-gray-400 hover:text-white text-base transition-colors">← 返回</button>
-        <span className="text-3xl font-bold text-white tabular-nums">
-          {completedCount}<span className="text-gray-500 text-xl font-normal"> / {totalCount}</span>
+  // 任务项渲染（复用）
+  const renderTaskItem = (coord: {row: number; col: number}, i: number, hex: string) => {
+    const displayRow = (gridDimensions?.M ?? 0) - coord.row;
+    const displayCol = coord.col + 1;
+    const colorKey = getColorKeyByHex(hex, selectedColorSystem);
+    return (
+      <div key={i}
+        className="flex items-center gap-1.5 px-2 py-1.5 text-sm md:text-base font-mono font-bold
+                   bg-gray-700 rounded-lg border border-gray-600 shrink-0"
+      >
+        <span className="text-amber-300 whitespace-nowrap">({displayRow},{displayCol})</span>
+        <span className="flex items-center gap-1 text-gray-200">
+          <span className="inline-block w-4 h-4 md:w-5 md:h-5 rounded border border-gray-500 shrink-0"
+            style={{ backgroundColor: hex }} />
+          <span className="whitespace-nowrap">{colorKey}</span>
         </span>
-        <div className="w-14" /> {/* 占位保持居中 */}
+      </div>
+    );
+  };
+
+  return (
+    <div className="h-screen bg-gray-950 flex flex-col select-none overflow-hidden">
+      {/* ===== 顶栏 ===== */}
+      <header className="shrink-0 bg-gray-900 border-b border-gray-800 px-3 md:px-4 py-2 md:py-3 flex items-center justify-between">
+        <button onClick={() => { window.history.back(); }}
+          className="text-gray-400 hover:text-white text-sm md:text-base transition-colors">← 返回</button>
+        <span className="text-xl md:text-3xl font-bold text-white tabular-nums">
+          {completedCount}<span className="text-gray-500 text-base md:text-xl font-normal"> / {totalCount}</span>
+        </span>
+        <span className="md:hidden text-sm text-gray-400 font-mono tabular-nums">{formatTime(elapsedSeconds)}</span>
+        <div className="hidden md:block w-14" />
       </header>
 
-      {/* ===== 主体：左(进度+计时) + 画布 + 右(坐标→色号一一对应) ===== */}
-      <div className="flex-1 flex min-h-0 p-2 gap-2">
+      {/* ===== 移动端：紧凑进度条 ===== */}
+      <div className="md:hidden shrink-0 bg-gray-900 border-b border-gray-800 px-3 py-1.5 flex items-center gap-2">
+        <span className="text-xs text-gray-400 tabular-nums w-8">{progressPct}%</span>
+        <div className="flex-1 bg-gray-700 rounded-full h-1.5 overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-500 rounded-full transition-all duration-500"
+            style={{ width: `${progressPct}%` }} />
+        </div>
+      </div>
 
-        {/* 左面板：进度 + 计时 */}
-        <div className="shrink-0 flex flex-col gap-3" style={{ width: '150px' }}>
+      {/* ===== 主体 ===== */}
+      <div className="flex-1 flex flex-col md:flex-row min-h-0 p-2 gap-2 overflow-hidden">
+
+        {/* 左面板：进度 + 计时（仅桌面端） */}
+        <div className="hidden md:flex shrink-0 flex-col gap-3" style={{ width: '150px' }}>
           <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
             <div className="text-base text-gray-400 mb-1">进度</div>
             <div className="text-3xl font-bold text-white tabular-nums leading-tight">
@@ -168,10 +205,20 @@ export default function FocusModePage() {
             <div className="text-base text-gray-400 mb-1">计时</div>
             <div className="text-3xl font-bold text-white font-mono tabular-nums">{formatTime(elapsedSeconds)}</div>
           </div>
+          {/* 桌面端：画布归位按钮 */}
+          {isCanvasMisaligned && (
+            <button
+              onClick={handleResetView}
+              className="bg-gray-800 rounded-xl p-3 border border-amber-600 text-center hover:bg-gray-700 transition-colors"
+            >
+              <div className="text-2xl mb-1">↺</div>
+              <div className="text-xs text-amber-400 font-medium">复位视图</div>
+            </button>
+          )}
         </div>
 
-        {/* 画布 */}
-        <div className="relative flex-1 min-w-0">
+        {/* 画布 — 移动端占满剩余空间 */}
+        <div className="relative flex-1 min-h-0 min-w-0 overflow-hidden rounded-xl">
           <FocusCanvas
             mappedPixelData={mappedPixelData} gridDimensions={gridDimensions}
             currentTask={currentTask} completedKeys={completedKeys}
@@ -182,44 +229,51 @@ export default function FocusModePage() {
           {showOverlay && (
             <FocusStartOverlay phase={phase === 'idle' ? 'idle' : 'countdown'} countdown={countdown} onStart={handleStart} />
           )}
+          {/* 移动端：浮动归位按钮 */}
+          {isCanvasMisaligned && (
+            <button
+              onClick={handleResetView}
+              className="md:hidden absolute top-2 right-2 z-40 w-10 h-10 rounded-full bg-gray-800/90 border border-amber-500
+                         flex items-center justify-center text-amber-400 text-lg shadow-lg
+                         hover:bg-gray-700 active:scale-95 transition-all"
+              title="复位视图"
+            >
+              ↺
+            </button>
+          )}
         </div>
 
-        {/* 右面板：坐标 + 色号 一一对应 */}
+        {/* 右面板（仅桌面端） */}
         {currentTask && (
-          <div className="shrink-0 bg-gray-800 rounded-xl p-3 border border-gray-700 overflow-y-auto" style={{ width: '175px' }}>
+          <div className="hidden md:block shrink-0 bg-gray-800 rounded-xl p-3 border border-gray-700 overflow-y-auto" style={{ width: '175px' }}>
             <div className="text-base text-gray-400 mb-2 flex items-center justify-between">
               <span>{currentTask.phase === 'border' ? '边框' : '填充'} #{currentTask.id}</span>
               <span className="text-gray-500">{currentTask.coordinates.length}豆</span>
             </div>
             <div className="flex flex-col gap-1.5">
-              {currentTask.coordinates.map((coord, i) => {
-                const displayRow = (gridDimensions?.M ?? 0) - coord.row;
-                const displayCol = coord.col + 1;
-                const hex = currentTask.colors[i];
-                const colorKey = getColorKeyByHex(hex, selectedColorSystem);
-                return (
-                  <div key={i}
-                    className="flex items-center justify-between gap-2 px-2.5 py-2.5 text-base font-mono font-bold
-                               bg-gray-700 rounded-lg border border-gray-600"
-                  >
-                    <span className="text-amber-300">({displayRow},{displayCol})</span>
-                    <span className="flex items-center gap-1.5 text-gray-200">
-                      <span className="inline-block w-5 h-5 rounded border border-gray-500 shrink-0"
-                        style={{ backgroundColor: hex }} />
-                      {colorKey}
-                    </span>
-                  </div>
-                );
-              })}
+              {currentTask.coordinates.map((coord, i) => renderTaskItem(coord, i, currentTask.colors[i]))}
             </div>
           </div>
         )}
       </div>
 
+      {/* ===== 移动端底部任务面板 — 固定 15vh ===== */}
+      {currentTask && (
+        <div className="md:hidden shrink-0 bg-gray-800 border-t border-gray-700 px-2 py-1.5" style={{ height: '15vh' }}>
+          <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
+            <span>{currentTask.phase === 'border' ? '边框' : '填充'} #{currentTask.id}</span>
+            <span className="text-gray-500">{currentTask.coordinates.length}豆</span>
+          </div>
+          <div className="flex flex-wrap gap-1 content-start overflow-y-auto" style={{ height: 'calc(100% - 1.5rem)' }}>
+            {currentTask.coordinates.map((coord, i) => renderTaskItem(coord, i, currentTask.colors[i]))}
+          </div>
+        </div>
+      )}
+
       {/* ===== 底部提示 ===== */}
       {phase === 'playing' && currentTask && (
-        <div className="shrink-0 text-center text-gray-500 text-xs py-2 border-t border-gray-800">
-          点击图纸上高亮区域外的任意位置 → 标记本组完成
+        <div className="shrink-0 text-center text-gray-500 text-xs py-1.5 border-t border-gray-800">
+          点击高亮外任意位置 → 标记完成
         </div>
       )}
     </div>
