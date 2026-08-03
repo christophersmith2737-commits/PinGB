@@ -2,7 +2,6 @@
 
 import React, { useState, useRef, ChangeEvent, DragEvent, useEffect, useMemo, useCallback } from 'react';
 import Script from 'next/script';
-import InstallPWA from '../components/InstallPWA';
 
 // 导入像素化工具和类型
 import {
@@ -620,7 +619,7 @@ export default function Home() {
         }
       }
       setTotalBeadCount(total);
-    } catch (e) { /* 忽略损坏的存档 */ }
+    } catch { /* 忽略损坏的存档 */ }
   }, []); // 仅挂载时执行一次
 
   // --- Derived State ---
@@ -865,7 +864,7 @@ export default function Home() {
       localStorage.setItem('perlerBeads_autosave_colorCounts', JSON.stringify(newColorCounts));
       localStorage.setItem('perlerBeads_autosave_gridDimensions', JSON.stringify(gridDimensions));
       localStorage.setItem('perlerBeads_autosave_colorSystem', selectedColorSystem);
-    } catch (e) {
+    } catch {
       // localStorage 满了则跳过
     }
   };
@@ -2338,8 +2337,6 @@ export default function Home() {
     {/* 添加自定义动画样式 */}
     <style dangerouslySetInnerHTML={{ __html: floatAnimation }} />
     
-    {/* PWA 安装按钮 */}
-    <InstallPWA />
     
     {/* ++ 修改：添加 onLoad 回调函数 ++ */}
     <Script

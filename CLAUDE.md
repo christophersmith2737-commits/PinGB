@@ -4,7 +4,6 @@
 
 上传任意图片，一键生成拼豆底稿。利用 AI 智能色彩映射，将照片转化为可在现实中用拼豆制作的标准图纸。
 
-- **官网**: https://pindou.348349.xyz/
 - **技术栈**: Next.js 15 (React 19) + TypeScript + Tailwind CSS 4 + Cloudflare Pages
 
 ## 核心功能
