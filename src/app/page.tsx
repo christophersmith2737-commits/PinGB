@@ -2414,7 +2414,7 @@ export default function Home() {
               {/* Brand name */}
               <div className="relative">
                 <h1 className="relative text-4xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-400 tracking-wider drop-shadow-2xl">
-                  拼好豆
+                  PinGB
                 </h1>
                 <div className="absolute top-1 -left-4 w-2 h-2 bg-gradient-to-br from-pink-400 to-red-500 rotate-45 animate-ping delay-600"></div>
                 
