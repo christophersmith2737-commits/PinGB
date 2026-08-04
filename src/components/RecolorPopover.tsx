@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MappedPixel } from '../utils/pixelation';
 import { convertColorKeyToHex, ColorSystem } from '../utils/colorSystemUtils';
 import { getColorKeyByHex } from '../utils/colorSystemUtils';
@@ -34,6 +34,29 @@ export default function RecolorPopover({
   onSelectColor, onConfirmReplace, onClose, onBack
 }: RecolorPopoverProps) {
   const [manualInput, setManualInput] = useState('');
+  const [pos, setPos] = useState({ x, y });
+  const dragging = useRef(false);
+  const offset = useRef({ x: 0, y: 0 });
+
+  // 当传入坐标变化时（选中新格子），重置位置
+  useEffect(() => {
+    setPos({ x, y });
+  }, [x, y]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    dragging.current = true;
+    offset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [pos]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    setPos({ x: e.clientX - offset.current.x, y: e.clientY - offset.current.y });
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    dragging.current = false;
+  }, []);
 
   const handleManualSubmit = () => {
     const hex = convertColorKeyToHex(manualInput.trim().toUpperCase(), colorSystem);
@@ -47,12 +70,17 @@ export default function RecolorPopover({
 
   return (
     <div
-      className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 min-w-[180px]"
-      style={{ left: x, top: y }}
+      className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 min-w-[180px] select-none"
+      style={{ left: pos.x, top: pos.y }}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
+      {/* Header — 拖拽手柄 */}
+      <div
+        className="flex items-center justify-between mb-2 cursor-grab active:cursor-grabbing"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+      >
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500">当前:</span>
           <span className="text-xs font-bold">{currentDisplayKey}</span>
