@@ -1,20 +1,20 @@
 /**
- * Next.js API Route — remove.bg 抠图代理
- * 直接传图给 remove.bg，返回透明背景 PNG
+ * Next.js API Route — remove.bg 抠图代理（开发环境）
+ * 生产环境由 Cloudflare Functions (functions/api/bg-remove.ts) 处理
  */
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { imageBase64 } = body;
+    const { imageBase64, apiKey: clientApiKey } = body;
 
     if (!imageBase64) {
       return Response.json({ error: 'Missing imageBase64' }, { status: 400 });
     }
 
-    const apiKey = process.env.REMOVEBG_API_KEY;
+    const apiKey = clientApiKey || process.env.REMOVEBG_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: 'REMOVEBG_API_KEY not configured' }, { status: 500 });
+      return Response.json({ error: '请填写 remove.bg API Key' }, { status: 400 });
     }
 
     // remove.bg 接受 base64（去掉 data:image/...;base64, 前缀）

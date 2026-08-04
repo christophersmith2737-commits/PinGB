@@ -8,7 +8,7 @@ interface ImageCropperModalProps {
   imageSrc: string;
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (croppedImageSrc: string) => void;
+  onConfirm: (croppedImageSrc: string, colorLimit?: number) => void;
 }
 
 export default function ImageCropperModal({
@@ -19,6 +19,9 @@ export default function ImageCropperModal({
 }: ImageCropperModalProps) {
   const cropperRef = useRef<React.ElementRef<typeof Cropper>>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [colorLimitEnabled, setColorLimitEnabled] = useState(false);
+  const [colorLimitInput, setColorLimitInput] = useState('30');
+  const [colorLimitError, setColorLimitError] = useState('');
 
   const getCropper = () => {
     const ref = cropperRef.current;
@@ -35,29 +38,40 @@ export default function ImageCropperModal({
       return;
     }
 
+    // 验证颜色数量限制
+    let colorLimit: number | undefined;
+    if (colorLimitEnabled) {
+      const n = parseInt(colorLimitInput, 10);
+      if (isNaN(n) || n < 3 || n > 221) {
+        setColorLimitError('请输入 3-221 之间的数字');
+        return;
+      }
+      setColorLimitError('');
+      colorLimit = n;
+    }
+
     setIsProcessing(true);
-    
+
     try {
-      // 获取裁剪后的图片数据
       const croppedCanvas = cropper.getCroppedCanvas({
         fillColor: 'transparent',
         imageSmoothingEnabled: true,
         imageSmoothingQuality: 'high',
       });
-      
+
       if (!croppedCanvas) {
         throw new Error('Failed to get cropped canvas');
       }
-      
+
       const croppedImageSrc = croppedCanvas.toDataURL('image/png');
-      onConfirm(croppedImageSrc);
+      onConfirm(croppedImageSrc, colorLimit);
     } catch (error) {
       console.error('裁剪图片失败:', error);
       alert('裁剪图片失败，请重试');
     } finally {
       setIsProcessing(false);
     }
-  }, [onConfirm]);
+  }, [onConfirm, colorLimitEnabled, colorLimitInput]);
 
   const handleRotateLeft = () => {
     getCropper()?.rotate(-90);
@@ -185,30 +199,74 @@ export default function ImageCropperModal({
         </div>
 
         {/* 底部按钮 */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={isProcessing}
-            className="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-          >
-            {isProcessing ? (
-              <>
-                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                处理中...
-              </>
-            ) : (
-              '确认裁剪'
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+          {/* 颜色数量限制 */}
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={colorLimitEnabled}
+                onChange={(e) => {
+                  setColorLimitEnabled(e.target.checked);
+                  if (!e.target.checked) setColorLimitError('');
+                }}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                使用颜色数量 ≤
+              </span>
+            </label>
+            <input
+              type="number"
+              min={3}
+              max={221}
+              value={colorLimitInput}
+              disabled={!colorLimitEnabled}
+              onChange={(e) => {
+                setColorLimitInput(e.target.value);
+                const n = parseInt(e.target.value, 10);
+                if (e.target.value !== '' && (isNaN(n) || n < 3 || n > 221)) {
+                  setColorLimitError('请输入 3-221');
+                } else {
+                  setColorLimitError('');
+                }
+              }}
+              className={`w-16 px-2 py-1 text-sm border rounded text-center ${
+                colorLimitError
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
+              } dark:bg-gray-800 dark:text-white disabled:opacity-40 disabled:cursor-not-allowed`}
+            />
+            {colorLimitError && (
+              <span className="text-xs text-red-500">{colorLimitError}</span>
             )}
-          </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={isProcessing}
+              className="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            >
+              {isProcessing ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  处理中...
+                </>
+              ) : (
+                '确认裁剪'
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

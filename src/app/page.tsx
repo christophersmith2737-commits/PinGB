@@ -206,6 +206,8 @@ export default function Home() {
   const [isAIOptimizeOpen, setIsAIOptimizeOpen] = useState<boolean>(false);
   // 纯净预览切换
   const [showGrid, setShowGrid] = useState<boolean>(true);
+  // 颜色数量限制（裁剪时设置）
+  const [colorLimit, setColorLimit] = useState<number | undefined>(undefined);
 
   // 一键加边框
   const handleAddBorder = useCallback(() => {
@@ -1096,13 +1098,14 @@ export default function Home() {
   };
 
   // 处理裁剪确认
-  const handleCropConfirm = (croppedImageSrc: string) => {
+  const handleCropConfirm = (croppedImageSrc: string, newColorLimit?: number) => {
     setOriginalImageSrc(croppedImageSrc);
     setMappedPixelData(null);
     setGridDimensions(null);
     setColorCounts(null);
     setTotalBeadCount(0);
     setInitialGridColorKeys(new Set()); // ++ 重置初始键 ++
+    setColorLimit(newColorLimit);
     // ++ 重置横轴格子数量为默认值 ++
     const defaultGranularity = 60;
     setGranularity(defaultGranularity);
@@ -1267,7 +1270,7 @@ export default function Home() {
     setSimilarityThresholdInput(newSimilarity.toString());
   };
 
-  const pixelateImage = (imageSrc: string, detailLevel: number, threshold: number, currentPalette: PaletteColor[]) => {
+  const pixelateImage = (imageSrc: string, detailLevel: number, threshold: number, currentPalette: PaletteColor[], currentColorLimit?: number) => {
     console.log(`Attempting to pixelate with detail: ${detailLevel}, threshold: ${threshold}`);
     const originalCanvas = originalCanvasRef.current;
     const pixelatedCanvas = pixelatedCanvasRef.current;
@@ -1464,6 +1467,79 @@ export default function Home() {
       }
       // --- 结束新的全局颜色合并逻辑 ---
 
+      // --- 颜色数量限制逻辑 ---
+      if (currentColorLimit !== undefined && currentColorLimit >= 3) {
+        // 统计当前 mergedData 中每种颜色的数量（按 hex 值）
+        const limitColorCounts = new Map<string, number>();
+        for (let r = 0; r < M; r++) {
+          for (let c = 0; c < N; c++) {
+            const cell = mergedData[r][c];
+            if (cell && !cell.isExternal && cell.key !== TRANSPARENT_KEY) {
+              const h = cell.color.toUpperCase();
+              limitColorCounts.set(h, (limitColorCounts.get(h) || 0) + 1);
+            }
+          }
+        }
+
+        const currentColorCount = limitColorCounts.size;
+        if (currentColorCount > currentColorLimit) {
+          console.log(`颜色数量限制: 当前 ${currentColorCount} 色 → 限制 ${currentColorLimit} 色`);
+
+          // 按频率降序，取前 N 个作为保留色
+          const sortedByFreq = Array.from(limitColorCounts.entries())
+            .sort((a, b) => b[1] - a[1]);
+          const keptHexes = new Set(sortedByFreq.slice(0, currentColorLimit).map(([h]) => h));
+          const removedHexes = sortedByFreq.slice(currentColorLimit).map(([h]) => h);
+
+          // 为每个被移除的颜色找到保留色中最接近的
+          const mergeMap = new Map<string, string>(); // removedHex → closestKeptHex
+          for (const removedHex of removedHexes) {
+            const removedRgb = hexToRgb(removedHex);
+            if (!removedRgb) continue;
+            let minDist = Infinity;
+            let closestHex = '';
+            for (const keptHex of keptHexes) {
+              const keptRgb = hexToRgb(keptHex);
+              if (!keptRgb) continue;
+              const dist = colorDistance(removedRgb, keptRgb);
+              if (dist < minDist) {
+                minDist = dist;
+                closestHex = keptHex;
+              }
+            }
+            if (closestHex) {
+              mergeMap.set(removedHex, closestHex);
+              console.log(`  合并: ${removedHex} → ${closestHex} (距离 ${minDist.toFixed(2)})`);
+            }
+          }
+
+          // 替换被移除颜色的像素
+          let mergedCount = 0;
+          for (let r = 0; r < M; r++) {
+            for (let c = 0; c < N; c++) {
+              const cell = mergedData[r][c];
+              if (cell && !cell.isExternal && cell.key !== TRANSPARENT_KEY) {
+                const h = cell.color.toUpperCase();
+                const targetHex = mergeMap.get(h);
+                if (targetHex) {
+                  const colorData = keyToColorDataMap.get(targetHex);
+                  if (colorData) {
+                    mergedData[r][c] = {
+                      key: targetHex,
+                      color: targetHex,
+                      isExternal: false,
+                    };
+                    mergedCount++;
+                  }
+                }
+              }
+            }
+          }
+          console.log(`颜色限制完成: 替换了 ${mergedCount} 个像素，最终 ${currentColorLimit} 色`);
+        }
+      }
+      // --- 结束颜色数量限制逻辑 ---
+
       // --- 绘制和状态更新 ---
       if (pixelatedCanvasRef.current) {
         setMappedPixelData(mergedData);
@@ -1505,7 +1581,7 @@ export default function Home() {
        const timeoutId = setTimeout(() => {
          if (originalImageSrc && originalCanvasRef.current && pixelatedCanvasRef.current && activeBeadPalette.length > 0) {
            console.log("useEffect triggered: Processing image due to src, granularity, threshold, palette selection, or remap trigger.");
-           pixelateImage(originalImageSrc, granularity, similarityThreshold, activeBeadPalette);
+           pixelateImage(originalImageSrc, granularity, similarityThreshold, activeBeadPalette, colorLimit);
          } else {
             console.warn("useEffect check failed inside timeout: Refs or active palette not ready/empty.");
          }
@@ -1530,7 +1606,7 @@ export default function Home() {
         // setTotalBeadCount(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [originalImageSrc, granularity, similarityThreshold, customPaletteSelections, remapTrigger]);
+  }, [originalImageSrc, granularity, similarityThreshold, customPaletteSelections, remapTrigger, colorLimit]);
 
   // 确保文件输入框引用在组件挂载后正确设置
   useEffect(() => {

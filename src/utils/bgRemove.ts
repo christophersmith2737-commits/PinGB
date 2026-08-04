@@ -11,13 +11,14 @@ export interface BgRemoveResult {
 
 export async function removeBackground(
   imageSrc: string,
+  apiKey?: string,
   onProgress?: (pct: number) => void
 ): Promise<BgRemoveResult> {
   onProgress?.(10);
   const response = await fetch('/api/bg-remove', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageBase64: imageSrc }),
+    body: JSON.stringify({ imageBase64: imageSrc, apiKey }),
   });
   onProgress?.(80);
 
