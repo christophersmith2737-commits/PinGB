@@ -371,7 +371,7 @@ export async function downloadImage({
       // 绘制坐标轴数字
       ctx.fillStyle = '#333333'; // 坐标数字颜色
       // 使用固定的字体大小，不进行缩放
-      const axisFontSize = 14;
+      const axisFontSize = 17;
       ctx.font = `${axisFontSize}px sans-serif`;
 
       // X轴（顶部）数字

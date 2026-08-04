@@ -2563,6 +2563,15 @@ export default function Home() {
           {/* 添加小红书交流群链接 */}
           
         </div>
+
+        {/* 二维码 — 右侧悬浮 */}
+        <div className="absolute top-4 right-4 hidden sm:block">
+          <img
+            src="/qrcode.jpg"
+            alt="二维码"
+            className="w-20 h-20 rounded-lg shadow-md border-2 border-gray-200 dark:border-gray-600 object-cover"
+          />
+        </div>
       </header>
 
       {/* Apply dark mode styles to the main section */}
