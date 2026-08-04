@@ -137,8 +137,6 @@ export default function Home() {
   const [selectedColor, setSelectedColor] = useState<MappedPixel | null>(null);
   // 新增：一键擦除模式状态
   const [isEraseMode, setIsEraseMode] = useState<boolean>(false);
-  // 新增状态变量：控制教程弹窗
-  const [isTutorialModalOpen, setIsTutorialModalOpen] = useState<boolean>(false);
   const [customPaletteSelections, setCustomPaletteSelections] = useState<PaletteSelections>({});
   const [isCustomPaletteEditorOpen, setIsCustomPaletteEditorOpen] = useState<boolean>(false);
   const [isCustomPalette, setIsCustomPalette] = useState<boolean>(false);
@@ -3455,108 +3453,11 @@ export default function Home() {
       {/* Apply dark mode styles to the Footer */}
       <footer className="w-full md:max-w-4xl mt-10 mb-6 py-6 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800/50 rounded-lg shadow-inner">
 
-        {/* 帮助教程按钮 */}
-        <div className="flex justify-center mb-5">
-          <button
-            onClick={() => setIsTutorialModalOpen(true)}
-            className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-full shadow-lg transition-all duration-300 hover:shadow-xl hover:translate-y-[-2px] flex items-center"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <path d="m9 12 2 2 4-4" />
-            </svg>
-            <span>帮助教程</span>
-          </button>
-        </div>
-
         {/* Copyright text color */}
         <p className="font-medium text-gray-600 dark:text-gray-300">
           拼好豆 · PinGB &copy; {new Date().getFullYear()}
         </p>
       </footer>
-
-      {/* 帮助教程弹窗 */}
-      {isTutorialModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
-            {/* 标题栏 */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="m9 12 2 2 4-4" />
-                </svg>
-                使用教程
-              </h2>
-              <button
-                onClick={() => setIsTutorialModalOpen(false)}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* 内容区域 */}
-            <div className="flex-1 overflow-auto p-6">
-              <div className="space-y-6">
-                {/* 步骤 1 */}
-                <div className="space-y-2">
-                  <h3 className="text-md font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 text-sm font-medium">1</span>
-                    一般使用流程
-                  </h3>
-                  <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <p className="text-gray-700 dark:text-gray-300">
-                      上传图片 → AI优化 → 去掉背景 → 下载图纸
-                    </p>
-                  </div>
-                </div>
-
-                {/* 步骤 2 */}
-                <div className="space-y-2">
-                  <h3 className="text-md font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 text-sm font-medium">2</span>
-                    处理模式
-                  </h3>
-                  <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <p className="text-gray-700 dark:text-gray-300">
-                      平均色模式，每个像素格取区域内所有像素的平均颜色，更逼真。
-                    </p>
-                  </div>
-                </div>
-
-                {/* 步骤 3 */}
-                <div className="space-y-2">
-                  <h3 className="text-md font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 text-sm font-medium">3</span>
-                    档案管理
-                  </h3>
-                  <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <p className="text-gray-700 dark:text-gray-300">
-                      下载档案可以下次直接导入使用。
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 底部按钮 */}
-            <div className="flex items-center justify-end px-6 py-4 border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={() => setIsTutorialModalOpen(false)}
-                className="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                我知道了
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 使用导入的下载设置弹窗组件 */}
       <DownloadSettingsModal 
