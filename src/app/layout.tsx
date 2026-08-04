@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "拼好豆 · PinGB",
-  description: "上传图片，一键生成拼豆底稿。AI 智能色彩映射，多店家色号系统，沉浸式拼豆引导。",
+  description: "上传图片，一键生成拼豆底稿。AI 智能色彩映射，多店家色号系统，辅助高效拼豆引导。",
 };
 
 export const viewport: Viewport = {

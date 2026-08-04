@@ -74,7 +74,7 @@ async function generateSignature(
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     const { request, env } = context;
-    const { imageBase64 } = await request.json<{ imageBase64: string }>();
+    const { imageBase64, apiKey } = await request.json<{ imageBase64: string; apiKey?: string }>();
 
     if (!imageBase64) {
       return Response.json({ error: 'Missing imageBase64 parameter' }, { status: 400 });
@@ -82,12 +82,43 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
 
-    // 实体分割请求体
+    // --- 如果客户端传了 remove.bg API Key，直接用 remove.bg ---
+    if (apiKey) {
+      const binaryStr = atob(base64Data);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+      const formData = new FormData();
+      formData.append('image_file', new Blob([bytes], { type: 'image/png' }), 'image.png');
+      formData.append('size', 'auto');
+
+      const rbResponse = await fetch('https://api.remove.bg/v1.0/removebg', {
+        method: 'POST',
+        headers: { 'X-Api-Key': apiKey },
+        body: formData,
+      });
+
+      if (!rbResponse.ok) {
+        const errText = await rbResponse.text();
+        let errMsg = `remove.bg HTTP ${rbResponse.status}`;
+        try {
+          const err = JSON.parse(errText);
+          errMsg = err.errors?.[0]?.title || errText.substring(0, 200);
+        } catch { /* use raw */ }
+        throw new Error(errMsg);
+      }
+
+      const resultBuffer = await rbResponse.arrayBuffer();
+      const resultBase64 = btoa(String.fromCharCode(...new Uint8Array(resultBuffer)));
+      return Response.json({ success: true, imageBase64: `data:image/png;base64,${resultBase64}` });
+    }
+
+    // --- 未传 apiKey，用火山引擎 entity_seg ---
     const reqBody = {
       req_key: 'entity_seg',
       binary_data_base64: [base64Data],
-      return_format: '1', // 返回 RGBA 图片（带 alpha 通道）
-      refine_mask: true,   // 边缘增强
+      return_format: '1',
+      refine_mask: true,
     };
 
     const body = JSON.stringify(reqBody);
@@ -125,12 +156,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       throw new Error(`Segmentation failed: ${data.message || 'Unknown error'} (code: ${data.code})`);
     }
 
-    // entity_seg 返回 data.binary_data_base64[0] 是抠图后的 RGBA PNG
     if (data.data?.binary_data_base64?.[0]) {
       return Response.json({ success: true, imageBase64: `data:image/png;base64,${data.data.binary_data_base64[0]}` });
     }
 
-    // 某些返回格式可能用 image_url
     if (data.data?.image_urls?.[0]) {
       return Response.json({ success: true, imageUrl: data.data.image_urls[0] });
     }

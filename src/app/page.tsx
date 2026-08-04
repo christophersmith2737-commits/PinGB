@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, ChangeEvent, DragEvent, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Script from 'next/script';
 
 // 导入像素化工具和类型
@@ -193,7 +194,7 @@ export default function Home() {
   // 新增：活跃工具层级管理
   const [activeFloatingTool, setActiveFloatingTool] = useState<'palette' | 'magnifier' | null>(null);
 
-  // 新增：沉浸式拼豆模式进入前下载提醒弹窗
+  // 新增：辅助高效拼豆模式进入前下载提醒弹窗
   const [isFocusModePreDownloadModalOpen, setIsFocusModePreDownloadModalOpen] = useState<boolean>(false);
 
   // 新增：图片裁剪弹窗状态
@@ -738,7 +739,7 @@ export default function Home() {
 
   // --- Event Handlers ---
 
-  // 沉浸式拼豆模式相关处理函数
+  // 辅助高效拼豆模式相关处理函数
   const handleEnterFocusMode = () => {
     setIsFocusModePreDownloadModalOpen(true);
   };
@@ -2901,9 +2902,13 @@ export default function Home() {
                     const left = offsetX + (col * cellW) + (cellW * 0.05);
                     const top = offsetY + (row * cellH) + (cellH * 0.05);
 
-                    // Popover position
-                    const popX = offsetX + (col * cellW) + cellW + 8;
-                    const popY = offsetY + (row * cellH) + cellH + 4;
+                    // Popover position (viewport-relative for fixed positioning + portal)
+                    const popX = canvasRect.left + (col * cellW) + cellW + 8;
+                    const popY = canvasRect.top + (row * cellH) + cellH + 4;
+
+                    // Clamp to keep popover on screen
+                    const clampedX = Math.min(popX, window.innerWidth - 200);
+                    const clampedY = Math.min(popY, window.innerHeight - 200);
 
                     // Collect neighbor colors
                     const dirs = [
@@ -2941,19 +2946,22 @@ export default function Home() {
                             backgroundColor: 'rgba(128, 0, 128, 0.4)',
                           }}
                         />
-                        {/* Popover */}
-                        <RecolorPopover
-                          x={popX}
-                          y={popY}
-                          cellData={cell}
-                          neighbors={neighbors}
-                          colorSystem={selectedColorSystem}
-                          step={recolorPopoverStep}
-                          onSelectColor={handleRecolorSelectColor}
-                          onConfirmReplace={handleRecolorConfirmReplace}
-                          onClose={() => { setRecolorSelected(null); setRecolorPopoverStep('menu'); }}
-                          onBack={() => setRecolorPopoverStep('colorOptions')}
-                        />
+                        {/* Popover — Portal to body, floats above everything */}
+                        {createPortal(
+                          <RecolorPopover
+                            x={clampedX}
+                            y={clampedY}
+                            cellData={cell}
+                            neighbors={neighbors}
+                            colorSystem={selectedColorSystem}
+                            step={recolorPopoverStep}
+                            onSelectColor={handleRecolorSelectColor}
+                            onConfirmReplace={handleRecolorConfirmReplace}
+                            onClose={() => { setRecolorSelected(null); setRecolorPopoverStep('menu'); }}
+                            onBack={() => setRecolorPopoverStep('colorOptions')}
+                          />,
+                          document.body
+                        )}
                       </>
                     );
                   })()}
@@ -3292,7 +3300,7 @@ export default function Home() {
             </div>
         )} {/* ++ End of RENDER Enter Manual Mode Button ++ */}
 
-             {/* 沉浸式拼豆模式按钮 */}
+             {/* 辅助高效拼豆模式按钮 */}
              {!isManualColoringMode && originalImageSrc && mappedPixelData && gridDimensions && (
                <div className="w-full md:max-w-2xl">
                  <button
@@ -3303,7 +3311,7 @@ export default function Home() {
                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                    </svg>
-                   进入沉浸式拼豆模式
+                   进入辅助高效拼豆模式
                  </button>
                </div>
              )}
@@ -3550,7 +3558,7 @@ export default function Home() {
         onDownload={handleDownloadRequest}
       />
 
-      {/* 沉浸式拼豆模式进入前下载提醒弹窗 */}
+      {/* 辅助高效拼豆模式进入前下载提醒弹窗 */}
       <FocusModePreDownloadModal
         isOpen={isFocusModePreDownloadModalOpen}
         onClose={() => setIsFocusModePreDownloadModalOpen(false)}

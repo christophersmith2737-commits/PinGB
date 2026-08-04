@@ -30,7 +30,7 @@ const FocusModePreDownloadModal: React.FC<FocusModePreDownloadModalProps> = ({
       gridDimensions,
       selectedColorSystem,
     });
-    // 等一下让下载开始，然后进入沉浸模式
+    // 等一下让下载开始，然后进入辅助高效拼豆模式
     setTimeout(() => {
       onProceedWithoutDownload();
     }, 500);
@@ -40,12 +40,12 @@ const FocusModePreDownloadModal: React.FC<FocusModePreDownloadModalProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex justify-center items-center p-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6">
         <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-3">
-          进入沉浸式拼豆模式
+          进入辅助高效拼豆模式
         </h2>
 
         <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg p-4 mb-5">
           <p className="text-sm text-amber-800 dark:text-amber-200 leading-relaxed">
-            进入沉浸式拼豆模式后，您将无法返回到当前的编辑界面。建议您先下载当前的数据文件（CSV格式）保存，以便日后重新导入使用。
+            进入辅助高效拼豆模式后，您将无法返回到当前的编辑界面。建议您先下载当前的数据文件（CSV格式）保存，以便日后重新导入使用。
           </p>
         </div>
 

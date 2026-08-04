@@ -47,7 +47,7 @@ export default function RecolorPopover({
 
   return (
     <div
-      className="absolute z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 min-w-[180px]"
+      className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 min-w-[180px]"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
     >
