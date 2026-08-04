@@ -84,6 +84,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // --- 如果客户端传了 remove.bg API Key，直接用 remove.bg ---
     if (apiKey) {
+      // base64 → Uint8Array（避免 atob 兼容问题）
       const binaryStr = atob(base64Data);
       const bytes = new Uint8Array(binaryStr.length);
       for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
@@ -109,7 +110,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
 
       const resultBuffer = await rbResponse.arrayBuffer();
-      const resultBase64 = btoa(String.fromCharCode(...new Uint8Array(resultBuffer)));
+      // 安全 base64 编码：分块处理避免爆栈
+      const resultBytes = new Uint8Array(resultBuffer);
+      const chunks: string[] = [];
+      const CHUNK = 0x8000; // 32KB per chunk
+      for (let i = 0; i < resultBytes.length; i += CHUNK) {
+        chunks.push(String.fromCharCode(...resultBytes.subarray(i, i + CHUNK)));
+      }
+      const resultBase64 = btoa(chunks.join(''));
       return Response.json({ success: true, imageBase64: `data:image/png;base64,${resultBase64}` });
     }
 
