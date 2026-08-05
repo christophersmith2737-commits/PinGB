@@ -16,6 +16,8 @@ export default function FocusModePage() {
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [completedKeys, setCompletedKeys] = useState<Set<string>>(new Set());
   const [completedCount, setCompletedCount] = useState(0);
+  // 撤销历史栈：每个条目记录 taskIndex 和该任务新增的坐标 key
+  const [taskHistory, setTaskHistory] = useState<{ taskIndex: number; coordKeys: string[] }[]>([]);
 
   const [phase, setPhase] = useState<'loading' | 'idle' | 'countdown' | 'playing' | 'finished'>('loading');
   const [countdown, setCountdown] = useState(3);
@@ -83,18 +85,51 @@ export default function FocusModePage() {
     if (!taskQueue || phase !== 'playing') return;
     const currentTask = taskQueue.tasks[currentTaskIndex];
     if (!currentTask) return;
+
+    // 记录当前任务的坐标 key，用于撤销
+    const coordKeys = currentTask.coordinates.map(c => `${c.row},${c.col}`);
+
     const newCompletedKeys = new Set(completedKeys);
     let newCompletedCount = completedCount;
-    for (const coord of currentTask.coordinates) {
-      const k = `${coord.row},${coord.col}`;
+    for (const k of coordKeys) {
       if (!newCompletedKeys.has(k)) { newCompletedKeys.add(k); newCompletedCount++; }
     }
     setCompletedKeys(newCompletedKeys);
     setCompletedCount(newCompletedCount);
+
+    // 推入撤销历史
+    setTaskHistory(prev => [...prev, { taskIndex: currentTaskIndex, coordKeys }]);
+
     const nextIndex = currentTaskIndex + 1;
     if (nextIndex >= taskQueue.tasks.length) { setTimerRunning(false); setPhase('finished'); }
     else { setCurrentTaskIndex(nextIndex); }
   }, [taskQueue, currentTaskIndex, phase, completedKeys, completedCount]);
+
+  // ============================================================
+  // 撤销
+  // ============================================================
+  const handleUndoTask = useCallback(() => {
+    if (!taskQueue || phase !== 'playing') return;
+    setTaskHistory(prev => {
+      if (prev.length === 0) return prev;
+      const lastEntry = prev[prev.length - 1];
+
+      // 移除该任务新增的已完成坐标
+      setCompletedKeys(prevKeys => {
+        const next = new Set(prevKeys);
+        for (const k of lastEntry.coordKeys) {
+          next.delete(k);
+        }
+        return next;
+      });
+      setCompletedCount(prevCount => prevCount - lastEntry.coordKeys.length);
+
+      // 回到该任务
+      setCurrentTaskIndex(lastEntry.taskIndex);
+
+      return prev.slice(0, -1);
+    });
+  }, [taskQueue, phase]);
 
   // ============================================================
   // 派生
@@ -145,15 +180,15 @@ export default function FocusModePage() {
 
   // 任务项渲染（复用）
   const renderTaskItem = (coord: {row: number; col: number}, i: number, hex: string) => {
-    const displayRow = (gridDimensions?.M ?? 0) - coord.row;
     const displayCol = coord.col + 1;
+    const displayRow = (gridDimensions?.M ?? 0) - coord.row;
     const colorKey = getColorKeyByHex(hex, selectedColorSystem);
     return (
       <div key={i}
         className="flex items-center gap-1.5 px-2 py-1.5 text-sm md:text-base font-mono font-bold
                    bg-gray-700 rounded-lg border border-gray-600 shrink-0"
       >
-        <span className="text-amber-300 whitespace-nowrap">({displayRow},{displayCol})</span>
+        <span className="text-amber-300 whitespace-nowrap">({displayCol},{displayRow})</span>
         <span className="flex items-center gap-1 text-gray-200">
           <span className="inline-block w-4 h-4 md:w-5 md:h-5 rounded border border-gray-500 shrink-0"
             style={{ backgroundColor: hex }} />
@@ -205,6 +240,31 @@ export default function FocusModePage() {
             <div className="text-base text-gray-400 mb-1">计时</div>
             <div className="text-3xl font-bold text-white font-mono tabular-nums">{formatTime(elapsedSeconds)}</div>
           </div>
+          {/* 下一组 & 撤销按钮 */}
+          {phase === 'playing' && (
+            <>
+              <button
+                onClick={handleAdvanceTask}
+                className="bg-gray-800 rounded-xl p-3 border border-emerald-600 text-center
+                           hover:bg-emerald-900/30 hover:border-emerald-500 active:scale-95 transition-all"
+                title="下一组"
+              >
+                <div className="text-2xl">→</div>
+                <div className="text-xs text-emerald-400 font-medium mt-0.5">下一组</div>
+              </button>
+              <button
+                onClick={handleUndoTask}
+                disabled={taskHistory.length === 0}
+                className="bg-gray-800 rounded-xl p-3 border border-amber-600 text-center
+                           hover:bg-amber-900/30 hover:border-amber-500 active:scale-95 transition-all
+                           disabled:opacity-30 disabled:cursor-not-allowed"
+                title="撤销"
+              >
+                <div className="text-2xl">↩</div>
+                <div className="text-xs text-amber-400 font-medium mt-0.5">撤销</div>
+              </button>
+            </>
+          )}
           {/* 桌面端：画布归位按钮 */}
           {isCanvasMisaligned && (
             <button
@@ -224,7 +284,6 @@ export default function FocusModePage() {
             currentTask={currentTask} completedKeys={completedKeys}
             canvasScale={canvasScale} canvasOffset={canvasOffset}
             onScaleChange={setCanvasScale} onOffsetChange={setCanvasOffset}
-            onAdvanceTask={handleAdvanceTask}
           />
           {showOverlay && (
             <FocusStartOverlay phase={phase === 'idle' ? 'idle' : 'countdown'} countdown={countdown} onStart={handleStart} />
@@ -248,6 +307,7 @@ export default function FocusModePage() {
           <div className="hidden md:block shrink-0 bg-gray-800 rounded-xl p-3 border border-gray-700 overflow-y-auto" style={{ width: '175px' }}>
             <div className="text-base text-gray-400 mb-2 flex items-center justify-between">
               <span>{currentTask.phase === 'border' ? '边框' : '填充'} #{currentTask.id}</span>
+              <span className="text-gray-500 text-xs">(列,行)</span>
               <span className="text-gray-500">{currentTask.coordinates.length}豆</span>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -257,25 +317,23 @@ export default function FocusModePage() {
         )}
       </div>
 
-      {/* ===== 移动端底部任务面板 — 固定 15vh ===== */}
+      {/* ===== 移动端底部任务面板 — 固定 30vh ===== */}
       {currentTask && (
-        <div className="md:hidden shrink-0 bg-gray-800 border-t border-gray-700 px-2 py-1.5" style={{ height: '15vh' }}>
+        <div className="md:hidden shrink-0 bg-gray-800 border-t border-gray-700 px-2 py-1.5" style={{ height: '30vh' }}>
           <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
             <span>{currentTask.phase === 'border' ? '边框' : '填充'} #{currentTask.id}</span>
+            <span className="text-gray-500 text-xs">(列,行)</span>
             <span className="text-gray-500">{currentTask.coordinates.length}豆</span>
           </div>
-          <div className="flex flex-wrap gap-1 content-start overflow-y-auto" style={{ height: 'calc(100% - 1.5rem)' }}>
+          <div className="grid gap-1 overflow-y-auto content-start" style={{
+            height: 'calc(100% - 1.5rem)',
+            gridTemplateColumns: 'repeat(5, 1fr)',
+          }}>
             {currentTask.coordinates.map((coord, i) => renderTaskItem(coord, i, currentTask.colors[i]))}
           </div>
         </div>
       )}
 
-      {/* ===== 底部提示 ===== */}
-      {phase === 'playing' && currentTask && (
-        <div className="shrink-0 text-center text-gray-500 text-xs py-1.5 border-t border-gray-800">
-          点击高亮外任意位置 → 标记完成
-        </div>
-      )}
     </div>
   );
 }

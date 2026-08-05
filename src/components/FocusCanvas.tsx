@@ -13,7 +13,6 @@ interface FocusCanvasProps {
   canvasOffset?: { x: number; y: number };
   onScaleChange?: (scale: number) => void;
   onOffsetChange?: (offset: { x: number; y: number }) => void;
-  onAdvanceTask: () => void;
 }
 
 const FocusCanvas: React.FC<FocusCanvasProps> = ({
@@ -25,7 +24,6 @@ const FocusCanvas: React.FC<FocusCanvasProps> = ({
   canvasOffset = { x: 0, y: 0 },
   onScaleChange,
   onOffsetChange,
-  onAdvanceTask,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -52,23 +50,6 @@ const FocusCanvas: React.FC<FocusCanvasProps> = ({
     }
     return s;
   }, [currentTask]);
-
-  // --- 判断点击是否落在当前任务区域内 ---
-  const isInCurrentTask = useCallback(
-    (clientX: number, clientY: number): boolean => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect || !gridDimensions) return false;
-
-      const mx = clientX - rect.left;
-      const my = clientY - rect.top;
-      const scaledCell = cellSize * canvasScale;
-      const col = Math.floor((mx - canvasOffset.x) / scaledCell);
-      const row = Math.floor((my - canvasOffset.y) / scaledCell);
-
-      return currentTaskKeys.has(`${row},${col}`);
-    },
-    [gridDimensions, cellSize, canvasScale, canvasOffset, currentTaskKeys],
-  );
 
   // --- 渲染 ---
   const draw = useCallback(() => {
@@ -198,31 +179,6 @@ const FocusCanvas: React.FC<FocusCanvasProps> = ({
     }
   }, [draw, currentTask, currentTaskKeys]);
 
-  // --- 点击 ---
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (mouseMoved.current) { mouseMoved.current = false; return; }
-      if (isInCurrentTask(e.clientX, e.clientY)) return;
-      onAdvanceTask();
-    },
-    [isInCurrentTask, onAdvanceTask],
-  );
-
-  // --- 容器空白区点击 ---
-  const handleContainerClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (mouseMoved.current) { mouseMoved.current = false; return; }
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const rect = canvas.getBoundingClientRect();
-        if (e.clientX >= rect.left && e.clientX <= rect.right &&
-            e.clientY >= rect.top && e.clientY <= rect.bottom) return;
-      }
-      onAdvanceTask();
-    },
-    [onAdvanceTask],
-  );
-
   // --- 滚轮缩放 ---
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
@@ -289,29 +245,18 @@ const FocusCanvas: React.FC<FocusCanvasProps> = ({
     [canvasScale, canvasOffset, onScaleChange, onOffsetChange],
   );
 
-  const handleTouchEnd = useCallback(
-    (e: React.TouchEvent) => {
-      if (!mouseMoved.current && isDragging.current) {
-        const touch = e.changedTouches[0];
-        if (touch && !isInCurrentTask(touch.clientX, touch.clientY)) {
-          onAdvanceTask();
-        }
-      }
-      isDragging.current = false;
-      pinchDist.current = 0;
-    },
-    [isInCurrentTask, onAdvanceTask],
-  );
+  const handleTouchEnd = useCallback(() => {
+    isDragging.current = false;
+    pinchDist.current = 0;
+  }, []);
 
   return (
     <div
       ref={containerRef}
       className="w-full h-full flex items-center justify-center overflow-hidden bg-gray-900 rounded-xl select-none relative"
-      onClick={handleContainerClick}
     >
       <canvas
         ref={canvasRef}
-        onClick={handleClick}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -320,7 +265,7 @@ const FocusCanvas: React.FC<FocusCanvasProps> = ({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="cursor-pointer"
+        className="cursor-grab"
         style={{ touchAction: 'none' }}
       />
     </div>
