@@ -211,12 +211,37 @@ export default function FocusModePage() {
         <div className="hidden md:block w-14" />
       </header>
 
-      {/* ===== 移动端：紧凑进度条 ===== */}
-      <div className="md:hidden shrink-0 bg-gray-900 border-b border-gray-800 px-3 py-1.5 flex items-center gap-2">
-        <span className="text-xs text-gray-400 tabular-nums w-8">{progressPct}%</span>
-        <div className="flex-1 bg-gray-700 rounded-full h-1.5 overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-500 rounded-full transition-all duration-500"
-            style={{ width: `${progressPct}%` }} />
+      {/* ===== 移动端：操作按钮 + 进度条 ===== */}
+      <div className="md:hidden shrink-0 bg-gray-900 border-b border-gray-800 px-3 py-1.5 flex flex-col gap-1.5">
+        {/* 下一组 / 撤销 按钮 */}
+        {phase === 'playing' && (
+          <div className="flex gap-2">
+            <button
+              onClick={handleAdvanceTask}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg
+                         bg-gradient-to-r from-emerald-600 to-cyan-700 text-white font-semibold text-sm
+                         active:scale-95 transition-all shadow-md"
+            >
+              <span className="text-base">⏭</span> 下一组
+            </button>
+            <button
+              onClick={handleUndoTask}
+              disabled={taskHistory.length === 0}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg
+                         bg-amber-700/60 text-amber-200 font-semibold text-sm border border-amber-600/40
+                         active:scale-95 transition-all disabled:opacity-30 disabled:active:scale-100"
+            >
+              <span className="text-base">↩</span> 撤销
+            </button>
+          </div>
+        )}
+        {/* 进度条 */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400 tabular-nums w-8">{progressPct}%</span>
+          <div className="flex-1 bg-gray-700 rounded-full h-1.5 overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-500 rounded-full transition-all duration-500"
+              style={{ width: `${progressPct}%` }} />
+          </div>
         </div>
       </div>
 
@@ -317,17 +342,17 @@ export default function FocusModePage() {
         )}
       </div>
 
-      {/* ===== 移动端底部任务面板 — 固定 30vh ===== */}
+      {/* ===== 移动端底部任务面板 — 3列×5行 ===== */}
       {currentTask && (
-        <div className="md:hidden shrink-0 bg-gray-800 border-t border-gray-700 px-2 py-1.5" style={{ height: '30vh' }}>
+        <div className="md:hidden shrink-0 bg-gray-800 border-t border-gray-700 px-2 py-1.5">
           <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
             <span>{currentTask.phase === 'border' ? '边框' : '填充'} #{currentTask.id}</span>
             <span className="text-gray-500 text-xs">(列,行)</span>
             <span className="text-gray-500">{currentTask.coordinates.length}豆</span>
           </div>
           <div className="grid gap-1 overflow-y-auto content-start" style={{
-            height: 'calc(100% - 1.5rem)',
-            gridTemplateColumns: 'repeat(5, 1fr)',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            maxHeight: '12rem',
           }}>
             {currentTask.coordinates.map((coord, i) => renderTaskItem(coord, i, currentTask.colors[i]))}
           </div>
