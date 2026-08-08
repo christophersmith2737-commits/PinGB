@@ -30,6 +30,29 @@ export default function FocusModePage() {
   const [canvasScale, setCanvasScale] = useState(1);
   const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
 
+  // 单像素高亮 + 画块定位 tooltip
+  const [highlightKey, setHighlightKey] = useState<string | null>(null);
+  const [showGrid, setShowGrid] = useState(false);
+  const [tooltipInfo, setTooltipInfo] = useState<{
+    displayCol: number; displayRow: number;
+    largeCol: number; largeRow: number;
+    hDir: string; vDir: string;
+    smallCol: number; smallRow: number;
+  } | null>(null);
+
+  // 画块定位计算：显示坐标(1-based, 行底=1) → 10×10大画块 / 5×5小画块
+  const calcBlockInfo = useCallback((displayCol: number, displayRow: number) => {
+    const largeCol = Math.ceil(displayCol / 10);
+    const largeRow = Math.ceil(displayRow / 10);
+    const localCol = (displayCol - 1) % 10 + 1;
+    const localRow = (displayRow - 1) % 10 + 1;
+    const hDir = localCol <= 5 ? '左' : '右';
+    const vDir = localRow <= 5 ? '下' : '上';
+    const smallCol = (localCol - 1) % 5 + 1;
+    const smallRow = (localRow - 1) % 5 + 1;
+    return { largeCol, largeRow, hDir, vDir, smallCol, smallRow };
+  }, []);
+
   // ============================================================
   // 加载
   // ============================================================
@@ -100,6 +123,10 @@ export default function FocusModePage() {
     // 推入撤销历史
     setTaskHistory(prev => [...prev, { taskIndex: currentTaskIndex, coordKeys }]);
 
+    // 清除单像素高亮
+    setHighlightKey(null);
+    setTooltipInfo(null);
+
     const nextIndex = currentTaskIndex + 1;
     if (nextIndex >= taskQueue.tasks.length) { setTimerRunning(false); setPhase('finished'); }
     else { setCurrentTaskIndex(nextIndex); }
@@ -126,6 +153,10 @@ export default function FocusModePage() {
 
       // 回到该任务
       setCurrentTaskIndex(lastEntry.taskIndex);
+
+      // 清除单像素高亮
+      setHighlightKey(null);
+      setTooltipInfo(null);
 
       return prev.slice(0, -1);
     });
@@ -183,10 +214,30 @@ export default function FocusModePage() {
     const displayCol = coord.col + 1;
     const displayRow = (gridDimensions?.M ?? 0) - coord.row;
     const colorKey = getColorKeyByHex(hex, selectedColorSystem);
+    const key = `${coord.row},${coord.col}`;
+    const isHighlighted = highlightKey === key;
+
+    const handleChipClick = () => {
+      if (isHighlighted) {
+        // toggle off
+        setHighlightKey(null);
+        setTooltipInfo(null);
+      } else {
+        const info = calcBlockInfo(displayCol, displayRow);
+        setHighlightKey(key);
+        setTooltipInfo({ displayCol, displayRow, ...info });
+      }
+    };
+
     return (
       <div key={i}
-        className="flex items-center gap-1.5 px-2 py-1.5 text-sm md:text-base font-mono font-bold
-                   bg-gray-700 rounded-lg border border-gray-600 shrink-0"
+        onClick={handleChipClick}
+        className={`flex items-center gap-1.5 px-2 py-1.5 text-sm md:text-base font-mono font-bold
+                   rounded-lg border shrink-0 cursor-pointer transition-all
+                   ${isHighlighted
+                     ? 'bg-amber-800/80 border-amber-400 ring-1 ring-amber-300/60'
+                     : 'bg-gray-700 border-gray-600 hover:bg-gray-600 hover:border-gray-500'
+                   }`}
       >
         <span className="text-amber-300 whitespace-nowrap">({displayCol},{displayRow})</span>
         <span className="flex items-center gap-1 text-gray-200">
@@ -211,6 +262,34 @@ export default function FocusModePage() {
         <div className="hidden md:block w-14" />
       </header>
 
+      {/* ===== 画块定位 Tooltip（固定浮层） ===== */}
+      {tooltipInfo && (() => {
+        const t = tooltipInfo;
+        const pixelFont = 'font-[family-name:var(--font-pixel)]';
+        const sansFont = 'font-[family-name:var(--font-geist-sans)]';
+        return (
+          <div className="fixed left-1/2 -translate-x-1/2 z-[80] pointer-events-none"
+            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 3.5rem)' }}>
+            <div className="bg-gray-800/95 border border-amber-400/80 rounded-xl shadow-2xl px-4 py-3
+                          animate-[tooltip-fade-in_0.2s_ease-out] backdrop-blur-sm">
+              <div className="flex items-center gap-1.5 text-sm leading-relaxed whitespace-nowrap">
+                <span className={`${pixelFont} text-amber-400`}>({t.displayCol},{t.displayRow})</span>
+                <span className={`${pixelFont} text-gray-400`}>→</span>
+                <span className={`${pixelFont} text-amber-300`}>
+                  ({t.largeCol},{t.largeRow})
+                </span>
+                <span className={`${sansFont} text-gray-300`}>画块，</span>
+                <span className={`${sansFont} text-gray-300`}>{t.hDir}{t.vDir}小块</span>
+                <span className={`${pixelFont} text-amber-300`}>
+                  ({t.smallCol},{t.smallRow})
+                </span>
+                <span className={`${sansFont} text-gray-300`}>位置</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ===== 移动端：操作按钮 + 进度条 ===== */}
       <div className="md:hidden shrink-0 bg-gray-900 border-b border-gray-800 px-3 py-1.5 flex flex-col gap-1.5">
         {/* 下一组 / 撤销 按钮 */}
@@ -232,6 +311,17 @@ export default function FocusModePage() {
                          active:scale-95 transition-all disabled:opacity-30 disabled:active:scale-100"
             >
               <span className="text-base">↩</span> 撤销
+            </button>
+            <button
+              onClick={() => setShowGrid(v => !v)}
+              className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-sm font-semibold border
+                         active:scale-95 transition-all min-w-[44px]
+                         ${showGrid
+                           ? 'bg-cyan-700/60 text-cyan-200 border-cyan-400/60'
+                           : 'bg-gray-700/40 text-gray-400 border-gray-600/40'}`}
+              title="网格线"
+            >
+              <span className="text-base">{showGrid ? '⊞' : '⊡'}</span>
             </button>
           </div>
         )}
@@ -288,6 +378,17 @@ export default function FocusModePage() {
                 <div className="text-2xl">↩</div>
                 <div className="text-xs text-amber-400 font-medium mt-0.5">撤销</div>
               </button>
+              {/* 网格线开关 */}
+              <button
+                onClick={() => setShowGrid(v => !v)}
+                className={`bg-gray-800 rounded-xl p-3 border text-center
+                           hover:bg-gray-700 active:scale-95 transition-all
+                           ${showGrid ? 'border-cyan-400' : 'border-gray-600'}`}
+                title="网格线"
+              >
+                <div className="text-2xl">{showGrid ? '⊞' : '⊡'}</div>
+                <div className={`text-xs font-medium mt-0.5 ${showGrid ? 'text-cyan-400' : 'text-gray-400'}`}>网格线</div>
+              </button>
             </>
           )}
           {/* 桌面端：画布归位按钮 */}
@@ -307,6 +408,7 @@ export default function FocusModePage() {
           <FocusCanvas
             mappedPixelData={mappedPixelData} gridDimensions={gridDimensions}
             currentTask={currentTask} completedKeys={completedKeys}
+            highlightKey={highlightKey} showGrid={showGrid}
             canvasScale={canvasScale} canvasOffset={canvasOffset}
             onScaleChange={setCanvasScale} onOffsetChange={setCanvasOffset}
           />

@@ -160,7 +160,7 @@ function generateBorderTasks(
   startId: number,
 ): { tasks: TaskItem[]; completedKeys: Set<string> } {
   const tasks: TaskItem[] = [];
-  const MAX_PER_TASK = 15;
+  const MAX_PER_TASK = 12;
   const completedKeys = new Set<string>();
 
   let taskId = startId;
@@ -237,7 +237,7 @@ function groupInteriorByColor(
 //   最后剩余散点 → 贪心就近收尾
 // ============================================================
 
-const MAX_PER_TASK = 15;
+const MAX_PER_TASK = 12;
 /** 找连通区域（8方向 BFS） */
 function findConnectedRegions(cells: TaskCoordinate[]): TaskCoordinate[][] {
   const cellSet = new Set(cells.map(c => key(c.row, c.col)));
