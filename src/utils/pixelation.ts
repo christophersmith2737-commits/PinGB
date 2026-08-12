@@ -67,6 +67,11 @@ function xyzToLab({ x, y, z }: { x: number; y: number; z: number }): { l: number
   };
 }
 
+// 导出 Lab 转换，供需要批量色差计算的场景预计算调色板
+export function rgbToLab(rgb: RgbColor): { l: number; a: number; b: number } {
+  return xyzToLab(rgbToXyz(rgb));
+}
+
 export function colorDistance(rgb1: RgbColor, rgb2: RgbColor): number {
   const lab1 = xyzToLab(rgbToXyz(rgb1));
   const lab2 = xyzToLab(rgbToXyz(rgb2));

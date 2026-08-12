@@ -102,6 +102,7 @@ import ImageCropperModal from '../components/ImageCropperModal';
 import AIOptimizeModal from '../components/AIOptimizeModal';
 import DissolvePanel from '../components/DissolvePanel';
 import BackgroundRemoveModal from '../components/BackgroundRemoveModal';
+import ReverseRecognitionModal from '../components/ReverseRecognitionModal';
 
 export default function Home() {
   const [originalImageSrc, setOriginalImageSrc] = useState<string | null>(null);
@@ -203,6 +204,8 @@ export default function Home() {
 
   // 新增：AI优化弹窗状态
   const [isAIOptimizeOpen, setIsAIOptimizeOpen] = useState<boolean>(false);
+  // 逆向图纸识别弹窗状态
+  const [isReverseRecognitionOpen, setIsReverseRecognitionOpen] = useState<boolean>(false);
   // 纯净预览切换
   const [showGrid, setShowGrid] = useState<boolean>(true);
   // 颜色数量限制（裁剪时设置）
@@ -1141,6 +1144,45 @@ export default function Home() {
   // 处理AI优化关闭
   const handleAIOptimizeClose = () => {
     setIsAIOptimizeOpen(false);
+  };
+
+  // 打开逆向图纸识别
+  const handleReverseRecognitionOpen = () => {
+    if (!originalImageSrc) {
+      alert('请先上传图片');
+      return;
+    }
+    setIsReverseRecognitionOpen(true);
+  };
+
+  // 逆向图纸识别完成：将识别结果接入现有工程管道
+  const handleReverseRecognitionConfirm = (result: {
+    mappedPixelData: MappedPixel[][];
+    gridDimensions: { N: number; M: number };
+    colorCounts: { [key: string]: { count: number; color: string } };
+    totalBeadCount: number;
+  }) => {
+    setMappedPixelData(result.mappedPixelData);
+    setGridDimensions(result.gridDimensions);
+    setColorCounts(result.colorCounts);
+    setTotalBeadCount(result.totalBeadCount);
+    setInitialGridColorKeys(new Set(Object.keys(result.colorCounts)));
+    // 用识别结果生成合成图，作为后续操作的 originalImageSrc
+    const syntheticImageSrc = generateSyntheticImageFromPixelData(
+      result.mappedPixelData,
+      result.gridDimensions,
+    );
+    if (syntheticImageSrc) {
+      setOriginalImageSrc(syntheticImageSrc);
+    }
+    // 同步格子数显示
+    setGranularity(result.gridDimensions.N);
+    setGranularityInput(result.gridDimensions.N.toString());
+    setIsReverseRecognitionOpen(false);
+    // 退出手动模式
+    setIsManualColoringMode(false);
+    setSelectedColor(null);
+    setIsEraseMode(false);
   };
 
   // 处理AI优化完成
@@ -2682,6 +2724,16 @@ export default function Home() {
                     </svg>
                     AI优化
                   </button>
+                  <button
+                    onClick={handleReverseRecognitionOpen}
+                    disabled={!originalImageSrc}
+                    className="inline-flex items-center justify-center h-9 px-3 text-sm rounded-md border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-800/40 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                    </svg>
+                    是像素图
+                  </button>
                 </div>
 
                 {/* Pixelation Mode Selector */}
@@ -3501,6 +3553,16 @@ export default function Home() {
         originalFileName={originalFileName}
         onClose={() => setIsBgRemoveOpen(false)}
         onApply={handleBgRemoveApply}
+      />
+
+      {/* 逆向图纸识别弹窗 */}
+      <ReverseRecognitionModal
+        imageSrc={originalImageSrc || ''}
+        isOpen={isReverseRecognitionOpen}
+        palette={activeBeadPalette}
+        selectedColorSystem={selectedColorSystem}
+        onClose={() => setIsReverseRecognitionOpen(false)}
+        onConfirm={handleReverseRecognitionConfirm}
       />
 
     </div>
