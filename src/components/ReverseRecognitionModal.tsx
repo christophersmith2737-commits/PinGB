@@ -28,8 +28,9 @@ import {
   MappedPixel,
   PaletteColor,
   RgbColor,
-  rgbToLab,
   hexToRgb,
+  rgbDistance,
+  findClosestPaletteColorByRgbDistance,
 } from '../utils/pixelation';
 import {
   ColorSystem,
@@ -638,9 +639,6 @@ export default function ReverseRecognitionModal({
     offCtx.drawImage(img, 0, 0);
     const imageData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
 
-    // 预计算调色板 Lab，避免每个格子重复转换
-    const labPalette = palette.map(p => ({ p, lab: rgbToLab(p.rgb) }));
-
     const grid: (MappedPixel | null)[][] = Array.from({ length: M }, () =>
       Array.from({ length: N }, () => null),
     );
@@ -648,23 +646,9 @@ export default function ReverseRecognitionModal({
     const rawRgbGrid: (RgbColor | null)[][] = Array.from({ length: M }, () =>
       Array.from({ length: N }, () => null),
     );
-
-    // 单个 RGB 映射到调色板（返回 hex）
+    // 正式匹配：原始采样 RGB → 色库所有颜色计算 RGB 三维欧氏距离 → 取最小者（返回 hex）
     const mapRgbToPalette = (rgb: RgbColor): string | null => {
-      const lab = rgbToLab(rgb);
-      let best: PaletteColor | null = null;
-      let bestDist = Infinity;
-      for (const { p, lab: pLab } of labPalette) {
-        const dl = lab.l - pLab.l;
-        const da = lab.a - pLab.a;
-        const db = lab.b - pLab.b;
-        const dist = dl * dl + da * da + db * db;
-        if (dist < bestDist) {
-          bestDist = dist;
-          best = p;
-        }
-        if (dist === 0) break;
-      }
+      const best = findClosestPaletteColorByRgbDistance(rgb, palette);
       return best ? best.hex : null;
     };
 
@@ -1172,6 +1156,16 @@ export default function ReverseRecognitionModal({
                       return rgb
                         ? `${key}实际颜色: RGB(${rgb.r}, ${rgb.g}, ${rgb.b})`
                         : `${key}实际颜色: 未知`;
+                    })()}
+                  </span>
+                  <span className="text-gray-700 dark:text-gray-200">
+                    RGB 三维欧氏距离:{' '}
+                    {(() => {
+                      const rgb = sampledRgb?.[selectedCell.row]?.[selectedCell.col];
+                      const cell = mappedData[selectedCell.row]?.[selectedCell.col];
+                      if (!rgb || !cell || cell.isExternal) return '无';
+                      const actual = hexToRgb(cell.color);
+                      return actual ? rgbDistance(rgb, actual).toFixed(2) : '未知';
                     })()}
                   </span>
                 </div>

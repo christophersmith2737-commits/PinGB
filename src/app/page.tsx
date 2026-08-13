@@ -103,6 +103,7 @@ import AIOptimizeModal from '../components/AIOptimizeModal';
 import DissolvePanel from '../components/DissolvePanel';
 import BackgroundRemoveModal from '../components/BackgroundRemoveModal';
 import ReverseRecognitionModal from '../components/ReverseRecognitionModal';
+import DenoisePreprocessModal from '../components/DenoisePreprocessModal';
 
 export default function Home() {
   const [originalImageSrc, setOriginalImageSrc] = useState<string | null>(null);
@@ -206,6 +207,9 @@ export default function Home() {
   const [isAIOptimizeOpen, setIsAIOptimizeOpen] = useState<boolean>(false);
   // 逆向图纸识别弹窗状态
   const [isReverseRecognitionOpen, setIsReverseRecognitionOpen] = useState<boolean>(false);
+  // 去噪预处理弹窗 + 实际传给逆向识别用的图片（处理后 or 原图）
+  const [isDenoiseOpen, setIsDenoiseOpen] = useState<boolean>(false);
+  const [reverseRecognitionSrc, setReverseRecognitionSrc] = useState<string>('');
   // 纯净预览切换
   const [showGrid, setShowGrid] = useState<boolean>(true);
   // 颜色数量限制（裁剪时设置）
@@ -1146,12 +1150,26 @@ export default function Home() {
     setIsAIOptimizeOpen(false);
   };
 
-  // 打开逆向图纸识别
+  // 打开逆向图纸识别：先进入均值滤波去噪预处理
   const handleReverseRecognitionOpen = () => {
     if (!originalImageSrc) {
       alert('请先上传图片');
       return;
     }
+    setIsDenoiseOpen(true);
+  };
+
+  // 去噪完成：用处理后图片进入识别
+  const handleDenoiseUseProcessed = (processedSrc: string) => {
+    setReverseRecognitionSrc(processedSrc);
+    setIsDenoiseOpen(false);
+    setIsReverseRecognitionOpen(true);
+  };
+
+  // 跳过去噪：直接用原图进入识别
+  const handleDenoiseUseOriginal = () => {
+    setReverseRecognitionSrc(originalImageSrc || '');
+    setIsDenoiseOpen(false);
     setIsReverseRecognitionOpen(true);
   };
 
@@ -3555,9 +3573,18 @@ export default function Home() {
         onApply={handleBgRemoveApply}
       />
 
+      {/* 均值滤波去噪预处理弹窗 */}
+      <DenoisePreprocessModal
+        imageSrc={originalImageSrc || ''}
+        isOpen={isDenoiseOpen}
+        onClose={() => setIsDenoiseOpen(false)}
+        onUseProcessed={handleDenoiseUseProcessed}
+        onUseOriginal={handleDenoiseUseOriginal}
+      />
+
       {/* 逆向图纸识别弹窗 */}
       <ReverseRecognitionModal
-        imageSrc={originalImageSrc || ''}
+        imageSrc={reverseRecognitionSrc || originalImageSrc || ''}
         isOpen={isReverseRecognitionOpen}
         palette={activeBeadPalette}
         selectedColorSystem={selectedColorSystem}

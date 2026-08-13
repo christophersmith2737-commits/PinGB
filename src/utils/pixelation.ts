@@ -106,6 +106,43 @@ export function findClosestPaletteColor(
   return closestColor;
 }
 
+/**
+ * RGB 三维欧氏距离：把 R/G/B 三个通道视为三维空间坐标。
+ * 用于逆向图纸识别「原始采样颜色 → 拼豆色号」的最近色判定。
+ */
+export function rgbDistance(rgb1: RgbColor, rgb2: RgbColor): number {
+  const dr = rgb1.r - rgb2.r;
+  const dg = rgb1.g - rgb2.g;
+  const db = rgb1.b - rgb2.b;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+/**
+ * 按 RGB 三维欧氏距离查找最近拼豆色（逆向图纸识别专用）。
+ * 距离完全相同时保持色库稳定排序：先遍历到的颜色胜出（严格小于才更新）。
+ */
+export function findClosestPaletteColorByRgbDistance(
+  targetRgb: RgbColor,
+  palette: PaletteColor[]
+): PaletteColor | null {
+  if (!palette || palette.length === 0) {
+    console.error("findClosestPaletteColorByRgbDistance: Palette is empty or invalid!");
+    return null;
+  }
+
+  let minDistance = Infinity;
+  let closestColor: PaletteColor | null = null;
+
+  for (const paletteColor of palette) {
+    const distance = rgbDistance(targetRgb, paletteColor.rgb);
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestColor = paletteColor;
+    }
+  }
+  return closestColor;
+}
+
 
 // --- 核心像素化计算逻辑 ---
 
