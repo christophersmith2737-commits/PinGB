@@ -21,11 +21,13 @@ import {
   xAxisDirection,
   ExtendDirection,
   sampleCenterPoint,
-  sampleFivePointWeighted,
+  sampleFivePoints,
+  sampleNinePoints,
 } from '../utils/reverseRecognition';
 import {
   MappedPixel,
   PaletteColor,
+  RgbColor,
   rgbToLab,
   hexToRgb,
 } from '../utils/pixelation';
@@ -90,6 +92,8 @@ export default function ReverseRecognitionModal({
   const [xAxis, setXAxis] = useState<AxisParams | null>(null);
   // 第一下点击放置的 X 起点（未画完 X 轴时）
   const [xStartPoint, setXStartPoint] = useState<Point | null>(null);
+  // 起点是否已用 Enter 锁定（锁定后 WSAD 不再微调起点）
+  const [xStartLocked, setXStartLocked] = useState(false);
   // 光标在图片中的位置（用于预览线）
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
   const [xCountInput, setXCountInput] = useState<string>('40');
@@ -100,9 +104,11 @@ export default function ReverseRecognitionModal({
   const [yCountInput, setYCountInput] = useState<string>('40');
   const [yCount, setYCount] = useState<number>(0);
   const [bounds, setBounds] = useState<GridBounds>({ colStart: 0, colEnd: 0, rowStart: 0, rowEnd: 0 });
-  const [samplingMethod, setSamplingMethod] = useState<'center' | 'five'>('center');
+  const [samplingMethod, setSamplingMethod] = useState<'center' | 'five' | 'nine'>('center');
   const [progress, setProgress] = useState(0);
   const [mappedData, setMappedData] = useState<MappedPixel[][] | null>(null);
+  // 调试：每个格子的原始采样 RGB（映射前的颜色）
+  const [sampledRgb, setSampledRgb] = useState<(RgbColor | null)[][] | null>(null);
   const [viewMode, setViewMode] = useState<'original' | 'result'>('original');
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [customColorInput, setCustomColorInput] = useState<string>('#FF0000');
@@ -120,6 +126,7 @@ export default function ReverseRecognitionModal({
       setPhase(0);
       setXAxis(null);
       setXStartPoint(null);
+      setXStartLocked(false);
       setHoverPoint(null);
       setXCountInput('40');
       setXCount(0);
@@ -130,6 +137,7 @@ export default function ReverseRecognitionModal({
       setBounds({ colStart: 0, colEnd: 0, rowStart: 0, rowEnd: 0 });
       setProgress(0);
       setMappedData(null);
+      setSampledRgb(null);
       setViewMode('original');
       setSelectedCell(null);
     }
@@ -168,14 +176,13 @@ export default function ReverseRecognitionModal({
   const baseYDir = { dx: xDir.dy, dy: -xDir.dx };
   const yDir = { dx: baseYDir.dx * ySign, dy: baseYDir.dy * ySign };
   const cellSize = xAxis ? computeCellSize(xAxis) : 1;
+  // X 轴是否大致水平（决定 WSAD 微调时哪个键对生效）
+  const horizontalXAxis = Math.abs(xDir.dx) >= Math.abs(xDir.dy);
 
   // ── 当前网格几何 ──
+  // Y 轴 = X 终点到用户点击位置的线段，单格高度 = 该长度 / 格子数（允许矩形格）
   const geometries: CellGeometry[] = useMemo(() => {
-    if (!xAxis || yCount <= 0) return [];
-    const yEnd = {
-      x: xAxis.endX + yCount * cellSize * yDir.dx,
-      y: xAxis.endY + yCount * cellSize * yDir.dy,
-    };
+    if (!xAxis || yCount <= 0 || !yEndPoint) return [];
     return generateGridGeometry(
       xAxis,
       yCount,
@@ -183,11 +190,10 @@ export default function ReverseRecognitionModal({
       bounds.colEnd,
       bounds.rowStart,
       bounds.rowEnd,
-      yEnd.x,
-      yEnd.y,
+      yEndPoint.x,
+      yEndPoint.y,
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [xAxis, yCount, bounds, ySign]);
+  }, [xAxis, yCount, bounds, yEndPoint]);
 
   const N = bounds.colEnd - bounds.colStart;
   const M = bounds.rowEnd - bounds.rowStart;
@@ -245,7 +251,7 @@ export default function ReverseRecognitionModal({
       drawEndpoint(xAxis.startX, xAxis.startY, '#EF4444');
       drawEndpoint(xAxis.endX, xAxis.endY, '#EF4444');
     } else if (xStartPoint) {
-      // 已放置起点：画起点 + 吸附预览虚线
+      // 已放置起点：画起点 + 吸附预览实线
       drawEndpoint(xStartPoint.x, xStartPoint.y, '#EF4444');
       if (hoverPoint) {
         const dx = hoverPoint.x - xStartPoint.x;
@@ -257,18 +263,17 @@ export default function ReverseRecognitionModal({
         } else {
           px = xStartPoint.x; // 垂直吸附
         }
-        drawAxisLine(xStartPoint.x, xStartPoint.y, px, py, '#EF4444', 2, [6, 4]);
+        drawAxisLine(xStartPoint.x, xStartPoint.y, px, py, '#EF4444', 2);
       }
     }
 
-    // 画 Y 轴（垂直方向）
+    // 画 Y 轴（垂直方向）：X 终点 → 用户放置的终点，与网格完全一致
     if (xAxis && phase >= 1) {
-      // 已放置的 Y 终点
       if (yEndPoint) {
         drawAxisLine(xAxis.endX, xAxis.endY, yEndPoint.x, yEndPoint.y, '#3B82F6', 3);
         drawEndpoint(yEndPoint.x, yEndPoint.y, '#3B82F6');
       } else if (hoverPoint) {
-        // 光标悬停：垂直虚线预览（从 X 终点投影）
+        // 光标悬停：垂直实线预览（从 X 终点投影）
         const vx = hoverPoint.x - xAxis.endX;
         const vy = hoverPoint.y - xAxis.endY;
         const proj = vx * baseYDir.dx + vy * baseYDir.dy;
@@ -279,7 +284,7 @@ export default function ReverseRecognitionModal({
           drawAxisLine(
             xAxis.endX, xAxis.endY,
             xAxis.endX + len * previewDir.dx, xAxis.endY + len * previewDir.dy,
-            '#3B82F6', 2, [6, 4],
+            '#3B82F6', 2,
           );
         }
       }
@@ -485,7 +490,7 @@ export default function ReverseRecognitionModal({
   };
 
   // ── 确认 X 轴 ──
-  const handleConfirmXAxis = () => {
+  const handleConfirmXAxis = useCallback(() => {
     if (!xAxis) return;
     const n = parseInt(xCountInput, 10);
     if (isNaN(n) || n < 2 || n > 500) {
@@ -495,10 +500,10 @@ export default function ReverseRecognitionModal({
     setXCount(n);
     setXAxis({ ...xAxis, count: n });
     setPhase(1);
-  };
+  }, [xAxis, xCountInput]);
 
   // ── 确认 Y 轴 ──
-  const handleConfirmYAxis = () => {
+  const handleConfirmYAxis = useCallback(() => {
     const m = parseInt(yCountInput, 10);
     if (isNaN(m) || m < 2 || m > 500) {
       alert('请输入 2-500 之间的格子数量');
@@ -507,7 +512,98 @@ export default function ReverseRecognitionModal({
     setYCount(m);
     setBounds({ colStart: 0, colEnd: xCount, rowStart: 0, rowEnd: m });
     setPhase(2);
-  };
+  }, [yCountInput, xCount]);
+
+  // ── 键盘微调：WSAD 以 1 像素步长移动当前点，Enter 确定 ──
+  // 第 1 个点（X 起点）：四方向自由移动
+  // 第 2 个点（X 终点）：锁定在 X 轴上（水平轴 → A/D 左右；垂直轴 → W/S 上下）
+  // 第 3 个点（Y 终点）：锁定在 Y 轴上（X 水平 → W/S 上下；X 垂直 → A/D 左右）
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName ?? '';
+      const isTyping =
+        tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!target?.isContentEditable;
+      const key = e.key.toLowerCase();
+
+      if (key === 'enter') {
+        if (e.repeat) return;
+        if (tag === 'BUTTON') return; // 焦点在按钮上时交给按钮自身的 Enter 行为
+        if (phase === 0) {
+          if (!xAxis && xStartPoint && !xStartLocked) {
+            // 第 1 个点确定 → 锁定起点，等待放置终点
+            e.preventDefault();
+            setXStartLocked(true);
+          } else if (xAxis) {
+            // 第 2 个点确定 → 确认 X 轴，进入 Y 轴阶段
+            e.preventDefault();
+            handleConfirmXAxis();
+          }
+        } else if (phase === 1 && yEndPoint) {
+          // 第 3 个点确定 → 确认 Y 轴
+          e.preventDefault();
+          handleConfirmYAxis();
+        }
+        return;
+      }
+
+      if (key !== 'w' && key !== 'a' && key !== 's' && key !== 'd') return;
+      if (isTyping) return; // 输入框内正常打字，不拦截
+      if (!img) return;
+
+      const step = e.shiftKey ? 10 : 1; // Shift 加速
+      const clampX = (v: number) => Math.max(0, Math.min(img.naturalWidth - 1, v));
+      const clampY = (v: number) => Math.max(0, Math.min(img.naturalHeight - 1, v));
+      e.preventDefault();
+
+      if (phase === 0) {
+        if (!xAxis && xStartPoint && !xStartLocked) {
+          // 第 1 个点：四方向自由微调
+          setXStartPoint(p => {
+            if (!p) return p;
+            const x = clampX(p.x + (key === 'a' ? -step : key === 'd' ? step : 0));
+            const y = clampY(p.y + (key === 'w' ? -step : key === 's' ? step : 0));
+            return { x, y };
+          });
+        } else if (xAxis) {
+          // 第 2 个点：锁定在 X 轴上（垂直方向键无效）
+          const axisKey = horizontalXAxis
+            ? key === 'a' || key === 'd'
+            : key === 'w' || key === 's';
+          if (!axisKey) return;
+          setXAxis(prev => {
+            if (!prev) return prev;
+            const next = { ...prev };
+            if (horizontalXAxis) {
+              next.endX = clampX(next.endX + (key === 'a' ? -step : step));
+            } else {
+              next.endY = clampY(next.endY + (key === 'w' ? -step : step));
+            }
+            return next;
+          });
+        }
+      } else if (phase === 1 && yEndPoint) {
+        // 第 3 个点：锁定在 Y 轴上（沿 X 轴方向的键无效）
+        const axisKey = horizontalXAxis
+          ? key === 'w' || key === 's'
+          : key === 'a' || key === 'd';
+        if (!axisKey) return;
+        setYEndPoint(p => {
+          if (!p) return p;
+          const next = { ...p };
+          if (horizontalXAxis) {
+            next.y = clampY(next.y + (key === 'w' ? -step : step));
+          } else {
+            next.x = clampX(next.x + (key === 'a' ? -step : step));
+          }
+          return next;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [phase, xAxis, xStartPoint, xStartLocked, yEndPoint, horizontalXAxis, img, handleConfirmXAxis, handleConfirmYAxis]);
 
   // ── 网格扩展（按屏幕方向判断，适配 X 轴左右朝向和 Y 轴上下朝向） ──
   const handleExtend = (direction: ExtendDirection) => {
@@ -548,8 +644,53 @@ export default function ReverseRecognitionModal({
     const grid: (MappedPixel | null)[][] = Array.from({ length: M }, () =>
       Array.from({ length: N }, () => null),
     );
+    // 调试：记录每个格子的原始采样 RGB
+    const rawRgbGrid: (RgbColor | null)[][] = Array.from({ length: M }, () =>
+      Array.from({ length: N }, () => null),
+    );
 
-    const sampleFn = samplingMethod === 'five' ? sampleFivePointWeighted : sampleCenterPoint;
+    // 单个 RGB 映射到调色板（返回 hex）
+    const mapRgbToPalette = (rgb: RgbColor): string | null => {
+      const lab = rgbToLab(rgb);
+      let best: PaletteColor | null = null;
+      let bestDist = Infinity;
+      for (const { p, lab: pLab } of labPalette) {
+        const dl = lab.l - pLab.l;
+        const da = lab.a - pLab.a;
+        const db = lab.b - pLab.b;
+        const dist = dl * dl + da * da + db * db;
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = p;
+        }
+        if (dist === 0) break;
+      }
+      return best ? best.hex : null;
+    };
+
+    // 多采样点加权投票：每个点先各自映射成色号再计票（中心 centerWeight 票，其余各 2 票）。
+    // 结果必为某个采样点映射出的色号，绝不做 RGB 平均后重新匹配。
+    // 投票按采样顺序计数，平局时靠前的点（中心）优先。
+    const voteBySamples = (samples: (RgbColor | null)[], centerWeight: number): string | null => {
+      const votes = new Map<string, number>();
+      samples.forEach((rgb, i) => {
+        if (!rgb) return;
+        const hex = mapRgbToPalette(rgb);
+        if (hex) {
+          const weight = i === 0 ? centerWeight : 2;
+          votes.set(hex, (votes.get(hex) || 0) + weight);
+        }
+      });
+      let bestKey: string | null = null;
+      let bestCount = -1;
+      for (const [hex, count] of votes) {
+        if (count > bestCount) {
+          bestCount = count;
+          bestKey = hex;
+        }
+      }
+      return bestKey;
+    };
 
     // 行索引换算：app 约定 mappedData[0] = 最上一行（屏幕上方）
     // Y 轴向上时图片 row 越大越靠上 → 翻转；Y 轴向下时直接平移
@@ -564,28 +705,40 @@ export default function ReverseRecognitionModal({
       const endIdx = Math.min(idx + 200, total);
       for (; idx < endIdx; idx++) {
         const g = geometries[idx];
-        const rgb = sampleFn(imageData, g);
-        if (rgb) {
-          const lab = rgbToLab(rgb);
-          let best: PaletteColor | null = null;
-          let bestDist = Infinity;
-          for (const { p, lab: pLab } of labPalette) {
-            const dl = lab.l - pLab.l;
-            const da = lab.a - pLab.a;
-            const db = lab.b - pLab.b;
-            const dist = dl * dl + da * da + db * db;
-            if (dist < bestDist) {
-              bestDist = dist;
-              best = p;
-            }
-            if (dist === 0) break;
-          }
-          if (best) {
-            grid[imageRowToDisplayRow(g.row)][g.col - bounds.colStart] = {
-              key: best.key,
-              color: best.hex,
+        const displayRow = imageRowToDisplayRow(g.row);
+        const displayCol = g.col - bounds.colStart;
+
+        if (samplingMethod === 'five' || samplingMethod === 'nine') {
+          // 五点/九点采样：每个点分别映射色号 → 加权投票
+          // 五点：中心 3 票 + 上下左右各 2 票 = 11 票
+          // 九点：中心 5 票 + 8 方向各 2 票 = 21 票
+          // 投票按采样顺序计数（中心在前），平局时中心优先
+          const samples =
+            samplingMethod === 'nine'
+              ? sampleNinePoints(imageData, g)
+              : sampleFivePoints(imageData, g);
+          rawRgbGrid[displayRow][displayCol] = samples[0]; // 调试记录中心点原始色
+          const bestKey = voteBySamples(samples, samplingMethod === 'nine' ? 5 : 3);
+          if (bestKey) {
+            grid[displayRow][displayCol] = {
+              key: bestKey,
+              color: bestKey,
               isExternal: false,
             };
+          }
+        } else {
+          // 中心点采样
+          const rgb = sampleCenterPoint(imageData, g);
+          if (rgb) {
+            rawRgbGrid[displayRow][displayCol] = rgb;
+            const hex = mapRgbToPalette(rgb);
+            if (hex) {
+              grid[displayRow][displayCol] = {
+                key: hex,
+                color: hex,
+                isExternal: false,
+              };
+            }
           }
         }
       }
@@ -602,6 +755,7 @@ export default function ReverseRecognitionModal({
           }
         }
         setMappedData(grid as MappedPixel[][]);
+        setSampledRgb(rawRgbGrid);
         setPhase(5);
         setViewMode('result');
       }
@@ -774,9 +928,23 @@ export default function ReverseRecognitionModal({
                 {xAxis
                   ? '已画好 X 轴，请输入这条线段包含的格子数：'
                   : xStartPoint
-                    ? '起点已放置，请点击第二个位置放置终点（自动吸附水平/垂直）'
+                    ? xStartLocked
+                      ? '起点已确定，请点击第二个位置放置终点（自动吸附水平/垂直）'
+                      : '起点已放置 — WSAD 微调 1 像素（Shift 加速），Enter 确定起点'
                     : '点击图片放置 X 轴起点，线段会自动吸附为水平或垂直'}
               </span>
+              {xAxis && (
+                <span className="text-xs font-mono text-blue-600 dark:text-blue-400">
+                  {horizontalXAxis ? 'A/D' : 'W/S'} 微调终点 · Enter 确定
+                </span>
+              )}
+              {xStartPoint && (
+                <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
+                  {xAxis
+                    ? `终点 (${Math.round(xAxis.endX)}, ${Math.round(xAxis.endY)})`
+                    : `起点 (${Math.round(xStartPoint.x)}, ${Math.round(xStartPoint.y)})`}
+                </span>
+              )}
               {xAxis && (
                 <>
                   <input
@@ -803,7 +971,7 @@ export default function ReverseRecognitionModal({
               )}
               {!xAxis && xStartPoint && (
                 <button
-                  onClick={() => setXStartPoint(null)}
+                  onClick={() => { setXStartPoint(null); setXStartLocked(false); }}
                   className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                 >
                   取消起点
@@ -820,6 +988,16 @@ export default function ReverseRecognitionModal({
                   ? '已放置 Y 轴终点，请输入 Y 方向格子数：'
                   : '点击图片放置 Y 轴终点（自动强制垂直于 X 轴）'}
               </span>
+              {yEndPoint && (
+                <>
+                  <span className="text-xs font-mono text-blue-600 dark:text-blue-400">
+                    {horizontalXAxis ? 'W/S' : 'A/D'} 微调终点 · Enter 确定
+                  </span>
+                  <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
+                    终点 ({Math.round(yEndPoint.x)}, {Math.round(yEndPoint.y)})
+                  </span>
+                </>
+              )}
               {yEndPoint && (
                 <>
                   <input
@@ -912,7 +1090,17 @@ export default function ReverseRecognitionModal({
                     : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
                 }`}
               >
-                五点加权采样（高精度）
+                五点投票采样（高精度）
+              </button>
+              <button
+                onClick={() => setSamplingMethod('nine')}
+                className={`px-4 py-1.5 text-sm rounded-md border transition-colors ${
+                  samplingMethod === 'nine'
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+                }`}
+              >
+                九点投票采样（最高精度）
               </button>
               <span className="text-sm font-mono text-gray-500 dark:text-gray-400">
                 {N} 列 × {M} 行
@@ -942,7 +1130,8 @@ export default function ReverseRecognitionModal({
                 />
               </div>
               <div className="text-center text-sm text-gray-600 dark:text-gray-300">
-                正在采样 {Math.round(progress * 100)}%（{samplingMethod === 'five' ? '五点加权' : '中心点'}采样）
+                正在采样 {Math.round(progress * 100)}%（
+                {samplingMethod === 'nine' ? '九点投票' : samplingMethod === 'five' ? '五点投票' : '中心点'}采样）
               </div>
             </div>
           )}
@@ -950,12 +1139,50 @@ export default function ReverseRecognitionModal({
           {/* Phase 5: 审视结果 */}
           {phase === 5 && (
             <div className="flex flex-col gap-2">
+              {/* 调试信息：原图采样色 / 识别色号 / 色号实际色 */}
+              {selectedCell && mappedData && (
+                <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs font-mono bg-gray-100 dark:bg-gray-900 rounded-md px-3 py-1.5 border border-gray-200 dark:border-gray-700">
+                  <span className="text-gray-600 dark:text-gray-300">
+                    第 {selectedCell.row + 1} 行第 {selectedCell.col + 1} 列
+                  </span>
+                  <span className="text-gray-700 dark:text-gray-200">
+                    原图采样颜色:{' '}
+                    {sampledRgb?.[selectedCell.row]?.[selectedCell.col]
+                      ? (() => {
+                          const rgb = sampledRgb[selectedCell.row][selectedCell.col]!;
+                          return `RGB(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+                        })()
+                      : '无（透明）'}
+                  </span>
+                  <span className="text-gray-700 dark:text-gray-200">
+                    识别出来的色号:{' '}
+                    {(() => {
+                      const cell = mappedData[selectedCell.row]?.[selectedCell.col];
+                      return cell && !cell.isExternal
+                        ? getColorKeyByHex(cell.color.toUpperCase(), selectedColorSystem)
+                        : '无';
+                    })()}
+                  </span>
+                  <span className="text-gray-700 dark:text-gray-200">
+                    {(() => {
+                      const cell = mappedData[selectedCell.row]?.[selectedCell.col];
+                      if (!cell || cell.isExternal) return '实际颜色: 无';
+                      const key = getColorKeyByHex(cell.color.toUpperCase(), selectedColorSystem);
+                      const rgb = hexToRgb(cell.color);
+                      return rgb
+                        ? `${key}实际颜色: RGB(${rgb.r}, ${rgb.g}, ${rgb.b})`
+                        : `${key}实际颜色: 未知`;
+                    })()}
+                  </span>
+                </div>
+              )}
+
               {/* 格子编辑栏 */}
               <div className="flex flex-wrap items-center gap-2 justify-center">
                 {selectedCell && mappedData ? (
                   <>
                     <span className="text-sm text-gray-600 dark:text-gray-300">
-                      第 {selectedCell.row + 1} 行第 {selectedCell.col + 1} 列：
+                      修改为：
                     </span>
                     <span
                       className="inline-block w-5 h-5 rounded-sm border border-gray-300 dark:border-gray-600"

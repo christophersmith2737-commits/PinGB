@@ -111,7 +111,16 @@ export function generateGridGeometry(
   yEndX?: number,
   yEndY?: number,
 ): CellGeometry[] {
-  const cellSize = computeCellSize(xAxis);
+  // X 方向单格宽度 = X 轴长度 / 格子数
+  const cellW = computeCellSize(xAxis);
+  // Y 方向单格高度 = Y 轴实际长度 / 格子数（允许矩形格，与 X 轴标定逻辑一致）
+  let cellH = cellW;
+  if (yEndX !== undefined && yEndY !== undefined) {
+    const yLen = segmentLength(xAxis.endX, xAxis.endY, yEndX, yEndY);
+    if (yLen > 0 && yCount > 0) {
+      cellH = yLen / yCount;
+    }
+  }
   const xDir = xAxisDirection(xAxis);
   const yDir = yAxisDirection(xAxis, yEndX, yEndY);
   const cells: CellGeometry[] = [];
@@ -119,13 +128,13 @@ export function generateGridGeometry(
   for (let row = rowStart; row < rowEnd; row++) {
     for (let col = colStart; col < colEnd; col++) {
       // 格子左上角
-      const x = xAxis.startX + col * cellSize * xDir.dx + row * cellSize * yDir.dx;
-      const y = xAxis.startY + col * cellSize * xDir.dy + row * cellSize * yDir.dy;
+      const x = xAxis.startX + col * cellW * xDir.dx + row * cellH * yDir.dx;
+      const y = xAxis.startY + col * cellW * xDir.dy + row * cellH * yDir.dy;
       // 中心点
-      const cx = x + cellSize * 0.5 * xDir.dx + cellSize * 0.5 * yDir.dx;
-      const cy = y + cellSize * 0.5 * xDir.dy + cellSize * 0.5 * yDir.dy;
+      const cx = x + cellW * 0.5 * xDir.dx + cellH * 0.5 * yDir.dx;
+      const cy = y + cellW * 0.5 * xDir.dy + cellH * 0.5 * yDir.dy;
 
-      cells.push({ col, row, x, y, w: cellSize, h: cellSize, cx, cy });
+      cells.push({ col, row, x, y, w: cellW, h: cellH, cx, cy });
     }
   }
   return cells;
@@ -203,45 +212,58 @@ export function sampleCenterPoint(
 }
 
 /**
- * 五点加权采样：中心(权重 3) + 上下左右(各权重 2)，总权重 11。
- * 降低单点采样受抗锯齿、网格线、压缩噪声影响的概率。
+ * 五点采样：返回 5 个采样点的原始 RGB，顺序为 [中心, 上, 下, 左, 右]。
+ * 偏移约 22% 格子边长：左右按格宽、上下按格高（矩形格各自适配）。
+ * 每个点各自映射色号后投票（投票逻辑在调用方）。
  */
-export function sampleFivePointWeighted(
+export function sampleFivePoints(
   imageData: ImageData,
   geo: CellGeometry,
-): RgbColor | null {
+): (RgbColor | null)[] {
   const cx = geo.cx;
   const cy = geo.cy;
-  const offset = geo.w * 0.1; // 10% 偏移
+  const offsetX = Math.max(1, Math.round(geo.w * 0.22));
+  const offsetY = Math.max(1, Math.round(geo.h * 0.22));
 
-  const points: { x: number; y: number; weight: number }[] = [
-    { x: cx, y: cy, weight: 3 },           // 中心
-    { x: cx, y: cy - offset, weight: 2 },   // 上
-    { x: cx, y: cy + offset, weight: 2 },   // 下
-    { x: cx - offset, y: cy, weight: 2 },   // 左
-    { x: cx + offset, y: cy, weight: 2 },   // 右
+  const points: { x: number; y: number }[] = [
+    { x: cx, y: cy },              // 中心
+    { x: cx, y: cy - offsetY },    // 上
+    { x: cx, y: cy + offsetY },    // 下
+    { x: cx - offsetX, y: cy },    // 左
+    { x: cx + offsetX, y: cy },    // 右
   ];
 
-  let rSum = 0, gSum = 0, bSum = 0;
-  let totalWeight = 0;
+  return points.map(pt => readPixel(imageData, pt.x, pt.y));
+}
 
-  for (const pt of points) {
-    const rgb = readPixel(imageData, pt.x, pt.y);
-    if (rgb) {
-      rSum += rgb.r * pt.weight;
-      gSum += rgb.g * pt.weight;
-      bSum += rgb.b * pt.weight;
-      totalWeight += pt.weight;
-    }
-  }
+/**
+ * 九点采样：返回 9 个采样点的原始 RGB，
+ * 顺序为 [中心, 上, 下, 左, 右, 左上, 右上, 左下, 右下]。
+ * 偏移约 22% 格子边长（同五点采样）。
+ * 每个点各自映射色号后投票（中心 5 票，其余 8 点各 2 票，共 21 票）。
+ */
+export function sampleNinePoints(
+  imageData: ImageData,
+  geo: CellGeometry,
+): (RgbColor | null)[] {
+  const cx = geo.cx;
+  const cy = geo.cy;
+  const offsetX = Math.max(1, Math.round(geo.w * 0.22));
+  const offsetY = Math.max(1, Math.round(geo.h * 0.22));
 
-  if (totalWeight === 0) return null;
+  const points: { x: number; y: number }[] = [
+    { x: cx, y: cy },                         // 中心（5 票）
+    { x: cx, y: cy - offsetY },               // 上
+    { x: cx, y: cy + offsetY },               // 下
+    { x: cx - offsetX, y: cy },               // 左
+    { x: cx + offsetX, y: cy },               // 右
+    { x: cx - offsetX, y: cy - offsetY },     // 左上
+    { x: cx + offsetX, y: cy - offsetY },     // 右上
+    { x: cx - offsetX, y: cy + offsetY },     // 左下
+    { x: cx + offsetX, y: cy + offsetY },     // 右下
+  ];
 
-  return {
-    r: Math.round(rSum / totalWeight),
-    g: Math.round(gSum / totalWeight),
-    b: Math.round(bSum / totalWeight),
-  };
+  return points.map(pt => readPixel(imageData, pt.x, pt.y));
 }
 
 // ── 构建拼豆矩阵 ──
