@@ -756,6 +756,89 @@ export default function Home() {
     window.location.href = '/focus';
   };
 
+  /**
+   * 构造图纸 JSON（桥接与下载共用）：
+   *   {N, M, colorSystem, pixels: [[{key,color}|null], ...]}
+   * N=列数(宽), M=行数(高)，pixels 为 M×N 二维数组，行主序。
+   */
+  const buildBeadBoardPayload = () => {
+    if (!mappedPixelData || !gridDimensions) return null;
+    const { N, M } = gridDimensions;
+    if (N === 0 || M === 0) return null;
+    return {
+      N,
+      M,
+      colorSystem: selectedColorSystem || 'MARD',
+      pixels: mappedPixelData.map(row =>
+        row.map(cell =>
+          cell && !cell.isExternal && cell.key !== 'ERASE'
+            ? { key: cell.key, color: cell.color }
+            : null
+        )
+      ),
+    };
+  };
+
+  /**
+   * 发送到拼豆板：把当前识别/编辑结果通过桥接传给 Android 宿主。
+   * 传输方式：
+   *   1. Android WebView 注入的 AndroidBridge.sendBeads(json)
+   *   2. 降级：window.parent.postMessage({type:'PINDD_SEND', payload}, '*')
+   */
+  const handleSendToBeadBoard = () => {
+    const payload = buildBeadBoardPayload();
+    if (!payload) {
+      alert('没有可发送的图纸数据，请先完成识别');
+      return;
+    }
+    if (payload.N > 104 || payload.M > 104) {
+      alert(`图纸尺寸 ${payload.N}×${payload.M} 超过拼豆板最大支持 104×104，请减小网格后重试`);
+      return;
+    }
+    const json = JSON.stringify(payload);
+    // 1) Android WebView 桥（addJavascriptInterface）
+    interface AndroidBridge {
+      sendBeads?: (json: string) => void;
+    }
+    const bridge = (window as unknown as { AndroidBridge?: AndroidBridge }).AndroidBridge;
+    if (bridge && typeof bridge.sendBeads === 'function') {
+      bridge.sendBeads(json);
+      return;
+    }
+    // 2) postMessage 降级（iframe 内嵌或调试用）
+    try {
+      window.parent.postMessage({ type: 'PINDD_SEND', payload: json }, '*');
+      alert('已发送图纸数据到宿主应用');
+    } catch (e) {
+      alert('发送失败：当前环境不支持桥接（' + (e as Error).message + '）');
+    }
+  };
+
+  /**
+   * 下载图纸文件（JSON）：电脑端使用——下载后可通过手机 App「导入图纸文件」发送到拼豆板。
+   */
+  const handleDownloadBeadBoardFile = () => {
+    const payload = buildBeadBoardPayload();
+    if (!payload) {
+      alert('没有可下载的图纸数据，请先完成识别');
+      return;
+    }
+    if (payload.N > 104 || payload.M > 104) {
+      alert(`图纸尺寸 ${payload.N}×${payload.M} 超过拼豆板最大支持 104×104，请减小网格后重试`);
+      return;
+    }
+    const json = JSON.stringify(payload);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pindoudou_${payload.N}x${payload.M}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   // 智能噪点识别处理函数
   const handleAutoDetectNoise = () => {
     if (!colorCounts) return;
@@ -3392,6 +3475,37 @@ export default function Home() {
                  </button>
                </div>
              )}
+             {/* 发送到拼豆板 / 下载图纸文件（手机 App 导入用） */}
+             {!isManualColoringMode && originalImageSrc && mappedPixelData && gridDimensions && (
+               <div className="w-full md:max-w-2xl mt-4">
+                 <button
+                   onClick={handleSendToBeadBoard}
+                   disabled={gridDimensions.N === 0 || gridDimensions.M === 0 || gridDimensions.N > 104 || gridDimensions.M > 104}
+                   className="w-full py-2.5 px-4 text-sm sm:text-base rounded-lg transition-all duration-300 flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md hover:shadow-lg hover:translate-y-[-1px] disabled:opacity-50 disabled:cursor-not-allowed"
+                 >
+                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                   </svg>
+                   发送到拼豆板
+                 </button>
+                 <button
+                   onClick={handleDownloadBeadBoardFile}
+                   disabled={gridDimensions.N === 0 || gridDimensions.M === 0 || gridDimensions.N > 104 || gridDimensions.M > 104}
+                   className="mt-2 w-full py-2.5 px-4 text-sm sm:text-base rounded-lg transition-all duration-300 flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg hover:translate-y-[-1px] disabled:opacity-50 disabled:cursor-not-allowed"
+                 >
+                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                   </svg>
+                   下载图纸文件（手机App导入用）
+                 </button>
+                 <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-1">
+                   {gridDimensions.N > 104 || gridDimensions.M > 104
+                     ? '当前图纸超过拼豆板最大尺寸 104×104，请减小网格'
+                     : '电脑端：下载 JSON 文件后通过手机 App「导入图纸文件」发送到拼豆板'}
+                 </p>
+               </div>
+             )}
+
 
         {/* ++ HIDE Download Buttons in manual mode ++ */}
         {!isManualColoringMode && originalImageSrc && mappedPixelData && (
